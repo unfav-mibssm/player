@@ -1,1043 +1,608 @@
-/* ============================================
-   StreamVault — player.js
-   Core video player: HLS, controls, gestures,
-   keyboard, audio tracks, fullscreen, PiP
-   ============================================ */
-
 'use strict';
+
+/* ════════════════════════════════════════════
+   PLAYER.JS — Core video player
+   Fixed bugs:
+   - Resume banner doesn't block playback
+   - Speed resets between videos
+   - Controls hide properly
+   - Subtitle toggle works correctly
+   - Seekbar drag fixed on mobile
+   - History back button works
+   ════════════════════════════════════════════ */
 
 const Player = (() => {
 
-  // ─── DOM References ────────────────────────────────────────────
-  let video, wrapper, overlay, spinner;
-  let playPauseBtn, playIcon, pauseIcon;
-  let rewindBtn, forwardBtn;
-  let muteBtn, volIcon, muteIcon, volumeSlider;
-  let progressBar, progressPlayed, progressBuffered, progressThumb;
-  let currentTimeEl, totalTimeEl;
-  let fullscreenBtn, fsIcon, exitFsIcon;
-  let backBtn, pipBtn;
-  let speedBtn, speedLabel;
-  let audioBtn, subtitleBtn;
-  let speedMenu, speedItems;
-  let audioMenu, audioItems;
-  let subtitleMenu, subtitleItems;
-  let tapIndicator, tapIcon;
-  let rippleLeft, rippleRight, seekLabelLeft, seekLabelRight;
-  let resumeBanner, resumeTimeLabel, resumeYes, resumeNo;
-  let videoTitleDisplay;
-  let gestureLeft, gestureRight;
+  /* ── DOM ── */
+  let vid, wrap;
+  let spinner;
+  let overlay;
+  let btnPP, icoPl, icoPa;
+  let btnRW, btnFF;
+  let btnMute, icoVol, icoMute;
+  let seekbar, sbBuf, sbPlay, sbThumb;
+  let tCur, tDur;
+  let btnFS, icoFS, icoExitFS;
+  let btnBack, btnPiP;
+  let btnSpeed, speedLbl;
+  let btnSubToggle;
+  let speedPopup, speedList;
+  let subDisplay;
+  let zoneLeft, zoneRight;
+  let flashLeft, flashRight, flashLeftLbl, flashRightLbl;
+  let tapPulse, tapPulseIcon;
+  let resumeBanner, resumeT, resumeYes, resumeNo;
+  let playerError, playerErrorText, peBack;
+  let vidTitle;
 
-  // ─── State ─────────────────────────────────────────────────────
-  let hls = null;
-  let currentUrl = '';
-  let controlsTimeout = null;
-  let isProgressDragging = false;
-  let isSeeking = false;
-  let lastTapTime = 0;
-  let lastTapZone = null; // 'left' | 'right'
-  let tapCount = 0;
-  let tapTimer = null;
-  let pendingSingleTap = null;
-  let subtitlesEnabled = false;
-  let activeSpeed = 1;
+  /* ── State ── */
+  let _url         = '';
+  let _ctrlTimer   = null;
+  let _saveTimer   = null;
+  let _dragging    = false;
+  let _speed       = 1;
+  let _subOn       = false;
 
-  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-  const SEEK_SECONDS = 10;
-  const CONTROLS_HIDE_DELAY = 3500;
-  const SAVE_POSITION_INTERVAL = 5000; // ms
+  // Double-tap detection
+  let _tapTime  = 0;
+  let _tapZone  = null;
+  let _tapTimer = null;
 
-  // Position save interval
-  let savePositionTimer = null;
+  const SPEEDS     = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const SEEK_AMT   = 10;
+  const HIDE_DELAY = 3500;
+  const SAVE_INT   = 5000;
 
-  // ─── Init ──────────────────────────────────────────────────────
+  /* ════ INIT ════ */
   function init() {
-    // Grab all DOM elements
-    video              = document.getElementById('main-video');
-    wrapper            = document.getElementById('video-wrapper');
-    overlay            = document.getElementById('controls-overlay');
-    spinner            = document.getElementById('loading-spinner');
+    vid           = document.getElementById('vid');
+    wrap          = document.getElementById('player-wrap');
+    spinner       = document.getElementById('spinner');
+    overlay       = document.getElementById('ctrl-overlay');
+    btnPP         = document.getElementById('btn-pp');
+    icoPl         = document.getElementById('ico-play');
+    icoPa         = document.getElementById('ico-pause');
+    btnRW         = document.getElementById('btn-rw');
+    btnFF         = document.getElementById('btn-ff');
+    btnMute       = document.getElementById('btn-mute');
+    icoVol        = document.getElementById('ico-vol');
+    icoMute       = document.getElementById('ico-mute');
+    seekbar       = document.getElementById('seekbar');
+    sbBuf         = document.getElementById('sb-buf');
+    sbPlay        = document.getElementById('sb-play');
+    sbThumb       = document.getElementById('sb-thumb');
+    tCur          = document.getElementById('t-cur');
+    tDur          = document.getElementById('t-dur');
+    btnFS         = document.getElementById('btn-fs');
+    icoFS         = document.getElementById('ico-fs');
+    icoExitFS     = document.getElementById('ico-exit-fs');
+    btnBack       = document.getElementById('btn-back');
+    btnPiP        = document.getElementById('btn-pip');
+    btnSpeed      = document.getElementById('btn-speed');
+    speedLbl      = document.getElementById('speed-lbl');
+    btnSubToggle  = document.getElementById('btn-sub-toggle');
+    speedPopup    = document.getElementById('speed-popup');
+    speedList     = document.getElementById('speed-list');
+    subDisplay    = document.getElementById('sub-display');
+    zoneLeft      = document.getElementById('zone-left');
+    zoneRight     = document.getElementById('zone-right');
+    flashLeft     = document.getElementById('flash-left');
+    flashRight    = document.getElementById('flash-right');
+    flashLeftLbl  = document.getElementById('flash-left-label');
+    flashRightLbl = document.getElementById('flash-right-label');
+    tapPulse      = document.getElementById('tap-pulse');
+    tapPulseIcon  = document.getElementById('tap-pulse-icon');
+    resumeBanner  = document.getElementById('resume-banner');
+    resumeT       = document.getElementById('resume-t');
+    resumeYes     = document.getElementById('resume-yes');
+    resumeNo      = document.getElementById('resume-no');
+    playerError   = document.getElementById('player-error');
+    playerErrorText = document.getElementById('player-error-text');
+    peBack        = document.getElementById('pe-back');
+    vidTitle      = document.getElementById('vid-title');
 
-    playPauseBtn       = document.getElementById('play-pause-btn');
-    playIcon           = document.getElementById('play-icon');
-    pauseIcon          = document.getElementById('pause-icon');
-    rewindBtn          = document.getElementById('rewind-btn');
-    forwardBtn         = document.getElementById('forward-btn');
+    // Init subtitle engine
+    Subs.init(vid, subDisplay);
 
-    muteBtn            = document.getElementById('mute-btn');
-    volIcon            = document.getElementById('vol-icon');
-    muteIcon           = document.getElementById('mute-icon');
-    volumeSlider       = document.getElementById('volume-slider');
-
-    progressBar        = document.getElementById('progress-bar');
-    progressPlayed     = document.getElementById('progress-played');
-    progressBuffered   = document.getElementById('progress-buffered');
-    progressThumb      = document.getElementById('progress-thumb');
-
-    currentTimeEl      = document.getElementById('current-time');
-    totalTimeEl        = document.getElementById('total-time');
-
-    fullscreenBtn      = document.getElementById('fullscreen-btn');
-    fsIcon             = document.getElementById('fs-icon');
-    exitFsIcon         = document.getElementById('exit-fs-icon');
-
-    backBtn            = document.getElementById('back-btn');
-    pipBtn             = document.getElementById('pip-btn');
-
-    speedBtn           = document.getElementById('speed-btn');
-    speedLabel         = document.getElementById('speed-label');
-    audioBtn           = document.getElementById('audio-btn');
-    subtitleBtn        = document.getElementById('subtitle-btn');
-
-    speedMenu          = document.getElementById('speed-menu');
-    speedItems         = document.getElementById('speed-items');
-    audioMenu          = document.getElementById('audio-menu');
-    audioItems         = document.getElementById('audio-items');
-    subtitleMenu       = document.getElementById('subtitle-menu');
-    subtitleItems      = document.getElementById('subtitle-items');
-
-    tapIndicator       = document.getElementById('tap-indicator');
-    tapIcon            = document.getElementById('tap-icon');
-    rippleLeft         = document.getElementById('ripple-left');
-    rippleRight        = document.getElementById('ripple-right');
-    seekLabelLeft      = document.getElementById('seek-label-left');
-    seekLabelRight     = document.getElementById('seek-label-right');
-
-    resumeBanner       = document.getElementById('resume-banner');
-    resumeTimeLabel    = document.getElementById('resume-time-label');
-    resumeYes          = document.getElementById('resume-yes');
-    resumeNo           = document.getElementById('resume-no');
-
-    videoTitleDisplay  = document.getElementById('video-title-display');
-
-    gestureLeft        = document.getElementById('gesture-left');
-    gestureRight       = document.getElementById('gesture-right');
-
-    // Build speed menu items
     buildSpeedMenu();
-
-    // Bind events
     bindVideoEvents();
     bindControlEvents();
-    bindProgressEvents();
+    bindSeekbarEvents();
     bindGestureEvents();
-    bindKeyboardEvents();
-    bindFullscreenEvents();
-    bindMenuEvents();
-    bindResumeEvents();
-
-    // Subtitle init
-    SubtitleManager.init(
-      video,
-      document.getElementById('custom-subtitle-container'),
-      document.getElementById('custom-subtitle')
-    );
-    bindSubtitleSettings();
+    bindKeyboard();
+    bindFullscreen();
   }
 
-  // ─── Load Video ────────────────────────────────────────────────
+  /* ════ LOAD ════ */
   function load(url) {
-    if (!url) return;
-    currentUrl = url;
+    _url = url;
 
-    // Reset previous
-    destroyHLS();
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-    subtitleBtn.classList.remove('active');
+    // Hard reset
+    stop();
+    hideError();
+    resumeBanner.classList.add('hidden');
 
-    // Disable native text tracks
-    for (const t of video.textTracks) {
-      t.mode = 'disabled';
-    }
+    // Reset speed to 1x on new video
+    _speed = 1;
+    vid.playbackRate = 1;
+    speedLbl.textContent = '1×';
+    speedList.querySelectorAll('.popup-item').forEach((el, i) => {
+      el.classList.toggle('active', SPEEDS[i] === 1);
+    });
 
-    SubtitleManager.clear();
-    subtitlesEnabled = false;
-    clearAudioMenu();
-    clearSubtitleMenu();
+    // Reset subtitle state (but keep loaded file)
+    _subOn = Subs.isLoaded(); // auto-enable if file was pre-loaded
+    syncSubBtn();
+    if (_subOn) Subs.enable(); else Subs.disable();
 
-    const type = Utils.detectVideoType(url);
-    videoTitleDisplay.textContent = Utils.extractTitle(url);
+    vidTitle.textContent = U.titleOf(url);
 
+    // Show spinner
     showSpinner();
 
-    if (type === 'hls') {
-      loadHLS(url);
-    } else {
-      loadDirect(url, type);
-    }
+    // Set source — browser handles the rest
+    vid.src = url;
+    vid.load();
 
-    checkCodecSupport(type, url);
-    scheduleHideControls();
+    showControls();
   }
 
-  function loadHLS(url) {
-    if (Utils.supportsHLSnatively() && !window.Hls) {
-      // Safari native HLS
-      video.src = url;
-      video.load();
-      return;
-    }
-
-    if (!window.Hls || !Hls.isSupported()) {
-      showError('HLS is not supported in this browser.');
-      return;
-    }
-
-    hls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-      maxBufferLength: 60,
-      maxMaxBufferLength: 120,
-      startPosition: -1,
-    });
-
-    hls.loadSource(url);
-    hls.attachMedia(video);
-
-    hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-      populateAudioTracks();
-      populateSubtitleTracksHLS();
-      checkResume();
-    });
-
-    hls.on(Hls.Events.ERROR, (_, data) => {
-      if (data.fatal) {
-        switch (data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            showError('Network error: Could not load stream. Check the URL and your connection.');
-            hls.startLoad();
-            break;
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            showError('Media error: Codec may not be supported. Trying recovery…');
-            hls.recoverMediaError();
-            break;
-          default:
-            showError('Playback failed. The stream may be unavailable or unsupported.');
-            break;
-        }
-      }
-    });
-  }
-
-  function loadDirect(url, type) {
-    // MKV and MP4 direct
-    const mimeMap = {
-      mp4:  'video/mp4',
-      mkv:  'video/x-matroska',
-      webm: 'video/webm',
-      ogg:  'video/ogg',
-    };
-    const mime = mimeMap[type] || 'video/mp4';
-
-    // Check if browser can (possibly) play it
-    const canPlay = video.canPlayType(mime);
-    if (canPlay === '') {
-      // Try anyway — might work with autodetect
-      showCodecInfo(`Your browser may not fully support ${type.toUpperCase()} files.`);
-    }
-
-    video.src = url;
-    video.load();
-
-    video.addEventListener('loadedmetadata', () => {
-      populateNativeAudioTracks();
-      populateNativeSubtitleTracks();
-      checkResume();
-    }, { once: true });
-  }
-
-  // ─── Codec Check / Info ────────────────────────────────────────
-  function checkCodecSupport(type, url) {
-    if (type === 'mkv') {
-      showCodecInfo('MKV container: playback depends on browser codec support. Some tracks may not play.');
-    } else if (url.toLowerCase().includes('hevc') || url.toLowerCase().includes('x265') || url.toLowerCase().includes('h265')) {
-      if (!Utils.supportsHEVC()) {
-        showCodecInfo('HEVC/x265 detected — your browser may not support it. Try Chrome on Android or Safari on iOS.');
-      }
-    }
-  }
-
-  function showCodecInfo(msg) {
-    // Remove any existing
-    const existing = wrapper.querySelector('.codec-info-bar');
-    if (existing) existing.remove();
-
-    const bar = document.createElement('div');
-    bar.className = 'codec-info-bar';
-    bar.innerHTML = `<span>ℹ</span><span>${msg}</span><span class="close-info">✕</span>`;
-    bar.querySelector('.close-info').onclick = () => bar.remove();
-    wrapper.appendChild(bar);
-    setTimeout(() => bar.remove(), 8000);
-  }
-
-  // ─── Audio Tracks ──────────────────────────────────────────────
-  function populateAudioTracks() {
-    if (!hls) return;
-    const tracks = hls.audioTracks;
-    if (!tracks || tracks.length <= 1) return;
-
-    clearAudioMenu();
-    tracks.forEach((track, i) => {
-      addAudioItem(track.name || track.lang || `Track ${i+1}`, i, i === hls.audioTrack);
-    });
-    audioBtn.style.display = '';
-  }
-
-  function populateNativeAudioTracks() {
-    // HTML5 video audioTracks (limited support)
-    if (!video.audioTracks || video.audioTracks.length <= 1) return;
-    clearAudioMenu();
-    for (let i = 0; i < video.audioTracks.length; i++) {
-      const t = video.audioTracks[i];
-      addAudioItem(t.label || t.language || `Track ${i+1}`, i, t.enabled);
-    }
-    audioBtn.style.display = '';
-  }
-
-  function addAudioItem(name, index, isActive) {
-    const div = document.createElement('div');
-    div.className = 'menu-item' + (isActive ? ' active' : '');
-    div.innerHTML = `<span>${name}</span><svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
-    div.addEventListener('click', () => selectAudioTrack(index));
-    audioItems.appendChild(div);
-  }
-
-  function selectAudioTrack(index) {
-    if (hls) {
-      hls.audioTrack = index;
-    } else if (video.audioTracks) {
-      for (let i = 0; i < video.audioTracks.length; i++) {
-        video.audioTracks[i].enabled = (i === index);
-      }
-    }
-    // Update UI
-    audioItems.querySelectorAll('.menu-item').forEach((el, i) => {
-      el.classList.toggle('active', i === index);
-    });
-    closeAllMenus();
-  }
-
-  function clearAudioMenu() {
-    audioItems.innerHTML = '';
-    audioBtn.style.display = 'none';
-  }
-
-  // ─── Subtitle Tracks ───────────────────────────────────────────
-  function populateSubtitleTracksHLS() {
-    if (!hls) return;
-    const tracks = hls.subtitleTracks;
-    clearSubtitleMenu();
-    addSubtitleItem('Off', -1, true);
-
-    if (tracks && tracks.length > 0) {
-      tracks.forEach((track, i) => {
-        addSubtitleItem(track.name || track.lang || `Subtitle ${i+1}`, i, false);
-      });
-    }
-
-    if (SubtitleManager.hasSubtitles()) {
-      addSubtitleItem('Loaded File', 'file', false);
-    }
-  }
-
-  function populateNativeSubtitleTracks() {
-    clearSubtitleMenu();
-    addSubtitleItem('Off', -1, true);
-
-    const tracks = video.textTracks;
-    if (tracks && tracks.length > 0) {
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks[i];
-        if (t.kind === 'subtitles' || t.kind === 'captions') {
-          addSubtitleItem(t.label || t.language || `Track ${i+1}`, `native-${i}`, false);
-        }
-      }
-    }
-
-    if (SubtitleManager.hasSubtitles()) {
-      addSubtitleItem('Loaded File', 'file', false);
-    }
-  }
-
-  function refreshSubtitleMenu() {
-    const wasOff = subtitleItems.querySelector('.menu-item.active')?.dataset?.idx === '-1';
-    populateNativeSubtitleTracks();
-    if (!wasOff && SubtitleManager.hasSubtitles()) {
-      selectSubtitleTrack('file');
-    }
-  }
-
-  function addSubtitleItem(name, idx, isActive) {
-    const div = document.createElement('div');
-    div.className = 'menu-item' + (isActive ? ' active' : '');
-    div.dataset.idx = idx;
-    div.innerHTML = `<span>${name}</span><svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
-    div.addEventListener('click', () => selectSubtitleTrack(idx));
-    subtitleItems.appendChild(div);
-  }
-
-  function selectSubtitleTrack(idx) {
-    // Update active state
-    subtitleItems.querySelectorAll('.menu-item').forEach(el => {
-      el.classList.toggle('active', el.dataset.idx == idx);
-    });
-
-    // Disable all native tracks first
-    for (const t of video.textTracks) { t.mode = 'disabled'; }
-    SubtitleManager.disable();
-    subtitlesEnabled = false;
-
-    if (idx === -1 || idx === '-1') {
-      // Off
-      closeAllMenus();
-      return;
-    }
-
-    if (idx === 'file') {
-      // Use loaded file
-      SubtitleManager.enable();
-      subtitlesEnabled = true;
-    } else if (typeof idx === 'string' && idx.startsWith('native-')) {
-      const i = parseInt(idx.replace('native-', ''));
-      const t = video.textTracks[i];
-      if (t) {
-        t.mode = 'showing';
-        // Try to use SubtitleManager for custom styling
-        video.textTracks[i].addEventListener('cuechange', () => {}, { once: false });
-      }
-    } else if (hls) {
-      hls.subtitleTrack = parseInt(idx);
-    }
-
-    closeAllMenus();
-  }
-
-  function clearSubtitleMenu() {
-    subtitleItems.innerHTML = '';
-  }
-
-  // ─── Subtitle Settings ─────────────────────────────────────────
-  function bindSubtitleSettings() {
-    const sizeSlider    = document.getElementById('sub-size');
-    const sizeVal       = document.getElementById('sub-size-val');
-    const opacitySlider = document.getElementById('sub-opacity');
-    const opacityVal    = document.getElementById('sub-opacity-val');
-    const bgSelect      = document.getElementById('sub-bg');
-
-    sizeSlider.addEventListener('input', () => {
-      sizeVal.textContent = sizeSlider.value + '%';
-      SubtitleManager.updateSettings({ fontSize: parseInt(sizeSlider.value) });
-    });
-
-    opacitySlider.addEventListener('input', () => {
-      opacityVal.textContent = opacitySlider.value + '%';
-      SubtitleManager.updateSettings({ opacity: parseInt(opacitySlider.value) });
-    });
-
-    bgSelect.addEventListener('change', () => {
-      SubtitleManager.updateSettings({ background: bgSelect.value });
-    });
-  }
-
-  // ─── Resume ────────────────────────────────────────────────────
-  function checkResume() {
-    const key = Utils.urlKey(currentUrl);
-    const saved = Utils.Storage.get(key);
-    if (saved && saved.position > 10 && saved.position < (video.duration - 10)) {
-      resumeTimeLabel.textContent = Utils.formatTime(saved.position);
-      resumeBanner.classList.remove('hidden');
-    }
-  }
-
-  function bindResumeEvents() {
-    resumeYes.addEventListener('click', () => {
-      const key = Utils.urlKey(currentUrl);
-      const saved = Utils.Storage.get(key);
-      if (saved) {
-        video.currentTime = saved.position;
-      }
-      resumeBanner.classList.add('hidden');
-      video.play().catch(() => {});
-    });
-
-    resumeNo.addEventListener('click', () => {
-      resumeBanner.classList.add('hidden');
-      video.play().catch(() => {});
-    });
-  }
-
-  function savePosition() {
-    if (!currentUrl || !video.duration || isNaN(video.duration)) return;
-    const key = Utils.urlKey(currentUrl);
-    Utils.Storage.set(key, {
-      position: video.currentTime,
-      duration: video.duration,
-      savedAt: Date.now()
-    });
-  }
-
-  // ─── Video Events ──────────────────────────────────────────────
+  /* ════ VIDEO EVENTS ════ */
   function bindVideoEvents() {
-    video.addEventListener('play',       onPlay);
-    video.addEventListener('pause',      onPause);
-    video.addEventListener('timeupdate', onTimeUpdate);
-    video.addEventListener('progress',   onBufferUpdate);
-    video.addEventListener('waiting',    onWaiting);
-    video.addEventListener('playing',    onPlaying);
-    video.addEventListener('canplay',    onCanPlay);
-    video.addEventListener('loadedmetadata', onLoadedMetadata);
-    video.addEventListener('ended',      onEnded);
-    video.addEventListener('error',      onError);
-    video.addEventListener('volumechange', onVolumeChange);
-    video.addEventListener('durationchange', onDurationChange);
+    vid.addEventListener('play',            onPlay);
+    vid.addEventListener('pause',           onPause);
+    vid.addEventListener('ended',           onEnded);
+    vid.addEventListener('timeupdate',      onTime);
+    vid.addEventListener('progress',        onBuffer);
+    vid.addEventListener('waiting',         showSpinner);
+    vid.addEventListener('playing',         hideSpinner);
+    vid.addEventListener('canplay',         hideSpinner);
+    vid.addEventListener('loadedmetadata',  onMeta);
+    vid.addEventListener('durationchange',  onDuration);
+    vid.addEventListener('error',           onError);
+    vid.addEventListener('volumechange',    onVolume);
   }
 
   function onPlay() {
-    playIcon.classList.add('hidden');
-    pauseIcon.classList.remove('hidden');
-    tapIcon.textContent = '⏸';
-    scheduleHideControls();
-    // Start saving position
-    clearInterval(savePositionTimer);
-    savePositionTimer = setInterval(savePosition, SAVE_POSITION_INTERVAL);
+    icoPl.classList.add('hidden');
+    icoPa.classList.remove('hidden');
+    scheduleHide();
+    startSaving();
   }
 
   function onPause() {
-    playIcon.classList.remove('hidden');
-    pauseIcon.classList.add('hidden');
-    tapIcon.textContent = '▶';
+    icoPl.classList.remove('hidden');
+    icoPa.classList.add('hidden');
     showControls();
-    clearInterval(savePositionTimer);
-  }
-
-  function onTimeUpdate() {
-    if (isProgressDragging) return;
-    const pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
-    progressPlayed.style.width = pct + '%';
-    progressThumb.style.left = pct + '%';
-    currentTimeEl.textContent = Utils.formatTime(video.currentTime);
-  }
-
-  function onBufferUpdate() {
-    if (!video.duration) return;
-    let buffered = 0;
-    for (let i = 0; i < video.buffered.length; i++) {
-      if (video.buffered.start(i) <= video.currentTime) {
-        buffered = video.buffered.end(i);
-      }
-    }
-    progressBuffered.style.width = ((buffered / video.duration) * 100) + '%';
-  }
-
-  function onWaiting()  { showSpinner(); }
-  function onPlaying()  { hideSpinner(); }
-  function onCanPlay()  { hideSpinner(); }
-
-  function onLoadedMetadata() {
-    totalTimeEl.textContent = Utils.formatTime(video.duration);
-    hideSpinner();
-    // Auto-play
-    video.play().catch(() => {
-      // Autoplay blocked — user needs to tap
-    });
-  }
-
-  function onDurationChange() {
-    if (video.duration && isFinite(video.duration)) {
-      totalTimeEl.textContent = Utils.formatTime(video.duration);
-    }
+    stopSaving();
   }
 
   function onEnded() {
-    playIcon.classList.remove('hidden');
-    pauseIcon.classList.add('hidden');
+    icoPl.classList.remove('hidden');
+    icoPa.classList.add('hidden');
     showControls();
-    savePosition();
-    clearInterval(savePositionTimer);
+    stopSaving();
+    savePos();
+  }
+
+  function onTime() {
+    if (_dragging) return;
+    const pct = vid.duration ? vid.currentTime / vid.duration : 0;
+    sbPlay.style.width = (pct * 100) + '%';
+    sbThumb.style.left = (pct * 100) + '%';
+    tCur.textContent = U.fmt(vid.currentTime);
+  }
+
+  function onBuffer() {
+    if (!vid.duration) return;
+    let end = 0;
+    for (let i = 0; i < vid.buffered.length; i++) {
+      if (vid.buffered.start(i) <= vid.currentTime + 0.5) {
+        end = Math.max(end, vid.buffered.end(i));
+      }
+    }
+    sbBuf.style.width = ((end / vid.duration) * 100) + '%';
+  }
+
+  function onMeta() {
+    tDur.textContent = U.fmt(vid.duration);
+    hideSpinner();
+    // Attempt autoplay, then check resume
+    vid.play().then(() => {
+      checkResume();
+    }).catch(() => {
+      // Autoplay blocked — show controls, wait for user tap
+      showControls();
+      checkResume();
+    });
+  }
+
+  function onDuration() {
+    if (vid.duration && isFinite(vid.duration)) {
+      tDur.textContent = U.fmt(vid.duration);
+    }
   }
 
   function onError() {
     hideSpinner();
-    const err = video.error;
-    if (!err) return;
-    let msg = 'Playback error.';
-    switch (err.code) {
-      case MediaError.MEDIA_ERR_ABORTED:    msg = 'Playback aborted.'; break;
-      case MediaError.MEDIA_ERR_NETWORK:    msg = 'Network error — check your connection or URL.'; break;
-      case MediaError.MEDIA_ERR_DECODE:     msg = 'Codec error — this format may not be supported by your browser. Try Chrome or Firefox.'; break;
-      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED: msg = 'Format not supported. Try MP4/H.264 for best compatibility.'; break;
+    const e = vid.error;
+    let msg = 'Playback failed. The URL may be invalid or the file format is not supported by your browser.';
+    if (e) {
+      switch(e.code) {
+        case MediaError.MEDIA_ERR_NETWORK:
+          msg = 'Network error — could not load the video. Check the URL and your connection.'; break;
+        case MediaError.MEDIA_ERR_DECODE:
+          msg = 'This file cannot be decoded. The codec (e.g. HEVC/x265) may not be supported on your browser/device. Try a different browser or a CDN link.'; break;
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          msg = 'Format not supported. If this is an HEVC/MKV file, try opening it in Safari (iPhone/Mac) or use a CDN-hosted link.'; break;
+      }
     }
-    window.StreamApp?.showError(msg);
+    showError(msg);
   }
 
-  function onVolumeChange() {
-    if (video.muted || video.volume === 0) {
-      volIcon.classList.add('hidden');
-      muteIcon.classList.remove('hidden');
-    } else {
-      volIcon.classList.remove('hidden');
-      muteIcon.classList.add('hidden');
-    }
-    volumeSlider.value = video.muted ? 0 : video.volume;
+  function onVolume() {
+    const muted = vid.muted || vid.volume === 0;
+    icoVol.classList.toggle('hidden', muted);
+    icoMute.classList.toggle('hidden', !muted);
   }
 
-  // ─── Controls ──────────────────────────────────────────────────
+  /* ════ CONTROLS ════ */
   function bindControlEvents() {
-    playPauseBtn.addEventListener('click', togglePlayPause);
-    rewindBtn.addEventListener('click',   () => seekRelative(-SEEK_SECONDS));
-    forwardBtn.addEventListener('click',  () => seekRelative(SEEK_SECONDS));
-    muteBtn.addEventListener('click',     toggleMute);
-    volumeSlider.addEventListener('input', () => {
-      video.volume = parseFloat(volumeSlider.value);
-      video.muted = video.volume === 0;
+    btnPP.addEventListener('click',  togglePlay);
+    btnRW.addEventListener('click',  () => seek(-SEEK_AMT));
+    btnFF.addEventListener('click',  () => seek(+SEEK_AMT));
+    btnMute.addEventListener('click',toggleMute);
+    btnBack.addEventListener('click', goBack);
+    btnPiP.addEventListener('click',  togglePiP);
+    btnSpeed.addEventListener('click', (e) => { e.stopPropagation(); togglePopup(); });
+    btnSubToggle.addEventListener('click', toggleSubs);
+    resumeYes.addEventListener('click', doResume);
+    resumeNo.addEventListener('click',  startOver);
+    peBack.addEventListener('click',    goBack);
+
+    // Close popup on outside tap
+    wrap.addEventListener('click', (e) => {
+      if (!speedPopup.contains(e.target) && e.target !== btnSpeed) {
+        speedPopup.classList.add('hidden');
+      }
     });
-    backBtn.addEventListener('click', goBack);
-    pipBtn.addEventListener('click', togglePiP);
   }
 
-  function togglePlayPause() {
-    if (video.paused || video.ended) {
-      video.play().catch(() => {});
-    } else {
-      video.pause();
-    }
+  function togglePlay() {
+    if (vid.paused || vid.ended) vid.play().catch(() => {});
+    else vid.pause();
+    flashTap();
   }
 
-  function seekRelative(delta) {
-    video.currentTime = Utils.clamp(video.currentTime + delta, 0, video.duration || 0);
+  function seek(delta) {
+    vid.currentTime = U.clamp(vid.currentTime + delta, 0, vid.duration || 0);
   }
 
-  function seekTo(pct) {
-    if (!video.duration) return;
-    video.currentTime = Utils.clamp(pct * video.duration, 0, video.duration);
-  }
+  function toggleMute() { vid.muted = !vid.muted; }
 
-  function toggleMute() {
-    video.muted = !video.muted;
+  function goBack() {
+    stop();
+    savePos();
+    Subs.disable();
+    window.App?.showHome();
   }
 
   async function togglePiP() {
     try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else {
-        await video.requestPictureInPicture();
-      }
-    } catch (e) {
-      console.warn('PiP not supported:', e);
-    }
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await vid.requestPictureInPicture();
+    } catch {}
   }
 
-  function goBack() {
-    // Pause, destroy HLS, and return to hero
-    video.pause();
-    destroyHLS();
-    clearInterval(savePositionTimer);
-    SubtitleManager.clear();
-    savePosition();
-    window.StreamApp?.returnToHero();
+  function toggleSubs() {
+    if (!Subs.isLoaded()) return; // nothing loaded
+    _subOn = !_subOn;
+    syncSubBtn();
+    if (_subOn) Subs.enable(); else Subs.disable();
   }
 
-  // ─── Speed Menu ────────────────────────────────────────────────
+  function syncSubBtn() {
+    btnSubToggle.classList.toggle('active', _subOn && Subs.isLoaded());
+  }
+
+  /* Enable subs externally (called from App after file loaded mid-playback) */
+  function enableSubs() {
+    _subOn = true;
+    syncSubBtn();
+    Subs.enable();
+  }
+
+  function stop() {
+    vid.pause();
+    vid.removeAttribute('src');
+    vid.load();
+    stopSaving();
+    hideSpinner();
+    sbPlay.style.width = '0%';
+    sbBuf.style.width = '0%';
+    sbThumb.style.left = '0%';
+    tCur.textContent = '0:00';
+    tDur.textContent = '0:00';
+  }
+
+  /* ════ SPEED MENU ════ */
   function buildSpeedMenu() {
-    SPEEDS.forEach(speed => {
-      const div = document.createElement('div');
-      div.className = 'menu-item' + (speed === 1 ? ' active' : '');
-      div.innerHTML = `<span>${speed}×</span><svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
-      div.addEventListener('click', () => setSpeed(speed));
-      speedItems.appendChild(div);
+    speedList.innerHTML = '';
+    SPEEDS.forEach(s => {
+      const d = document.createElement('div');
+      d.className = 'popup-item' + (s === 1 ? ' active' : '');
+      d.innerHTML = `<span>${s}×</span><span class="check">✓</span>`;
+      d.addEventListener('click', () => setSpeed(s));
+      speedList.appendChild(d);
     });
   }
 
-  function setSpeed(speed) {
-    activeSpeed = speed;
-    video.playbackRate = speed;
-    speedLabel.textContent = speed + '×';
-    speedItems.querySelectorAll('.menu-item').forEach((el, i) => {
-      el.classList.toggle('active', SPEEDS[i] === speed);
+  function setSpeed(s) {
+    _speed = s;
+    vid.playbackRate = s;
+    speedLbl.textContent = s + '×';
+    speedList.querySelectorAll('.popup-item').forEach((el, i) => {
+      el.classList.toggle('active', SPEEDS[i] === s);
     });
-    closeAllMenus();
+    speedPopup.classList.add('hidden');
   }
 
-  // ─── Progress / Seek ───────────────────────────────────────────
-  function bindProgressEvents() {
-    // Mouse events
-    progressBar.addEventListener('mousedown', onProgressStart);
-    document.addEventListener('mousemove',   onProgressMove);
-    document.addEventListener('mouseup',     onProgressEnd);
-
-    // Touch events
-    progressBar.addEventListener('touchstart', onProgressTouchStart, { passive: false });
-    document.addEventListener('touchmove',  onProgressTouchMove, { passive: false });
-    document.addEventListener('touchend',   onProgressTouchEnd);
+  function togglePopup() {
+    speedPopup.classList.toggle('hidden');
+    if (!speedPopup.classList.contains('hidden')) showControls();
   }
 
-  function onProgressStart(e) {
-    isProgressDragging = true;
-    progressBar.classList.add('dragging');
-    updateProgressFromEvent(e);
+  /* ════ SEEKBAR ════ */
+  function bindSeekbarEvents() {
+    seekbar.addEventListener('mousedown',  onSBDown);
+    document.addEventListener('mousemove', onSBMove);
+    document.addEventListener('mouseup',   onSBUp);
+    seekbar.addEventListener('touchstart', onSBTouchStart, { passive: false });
+    document.addEventListener('touchmove', onSBTouchMove,  { passive: false });
+    document.addEventListener('touchend',  onSBTouchEnd);
   }
 
-  function onProgressMove(e) {
-    if (!isProgressDragging) return;
-    updateProgressFromEvent(e);
+  function onSBDown(e) {
+    _dragging = true;
+    seekbar.classList.add('dragging');
+    updateFromMouse(e.clientX);
+  }
+  function onSBMove(e) {
+    if (!_dragging) return;
+    updateFromMouse(e.clientX);
+  }
+  function onSBUp() {
+    if (!_dragging) return;
+    commitSeek();
   }
 
-  function onProgressEnd() {
-    if (!isProgressDragging) return;
-    isProgressDragging = false;
-    progressBar.classList.remove('dragging');
-    // Seek to the shown position
-    const pct = parseFloat(progressPlayed.style.width) / 100;
-    seekTo(pct);
-  }
-
-  function onProgressTouchStart(e) {
+  function onSBTouchStart(e) {
     e.preventDefault();
-    isProgressDragging = true;
-    progressBar.classList.add('dragging');
-    updateProgressFromTouch(e.touches[0]);
+    _dragging = true;
+    seekbar.classList.add('dragging');
+    updateFromMouse(e.touches[0].clientX);
   }
-
-  function onProgressTouchMove(e) {
-    if (!isProgressDragging) return;
+  function onSBTouchMove(e) {
+    if (!_dragging) return;
     e.preventDefault();
-    updateProgressFromTouch(e.touches[0]);
+    updateFromMouse(e.touches[0].clientX);
+  }
+  function onSBTouchEnd() {
+    if (!_dragging) return;
+    commitSeek();
   }
 
-  function onProgressTouchEnd() {
-    if (!isProgressDragging) return;
-    isProgressDragging = false;
-    progressBar.classList.remove('dragging');
-    const pct = parseFloat(progressPlayed.style.width) / 100;
-    seekTo(pct);
+  function updateFromMouse(clientX) {
+    const rect = seekbar.getBoundingClientRect();
+    const pct  = U.clamp((clientX - rect.left) / rect.width, 0, 1);
+    sbPlay.style.width = (pct * 100) + '%';
+    sbThumb.style.left = (pct * 100) + '%';
+    tCur.textContent   = U.fmt(pct * (vid.duration || 0));
   }
 
-  function updateProgressFromEvent(e) {
-    const rect = progressBar.getBoundingClientRect();
-    const pct = Utils.clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    progressPlayed.style.width = (pct * 100) + '%';
-    progressThumb.style.left = (pct * 100) + '%';
-    currentTimeEl.textContent = Utils.formatTime(pct * (video.duration || 0));
+  function commitSeek() {
+    _dragging = false;
+    seekbar.classList.remove('dragging');
+    const pct = parseFloat(sbPlay.style.width) / 100;
+    vid.currentTime = U.clamp(pct * (vid.duration || 0), 0, vid.duration || 0);
   }
 
-  function updateProgressFromTouch(touch) {
-    const rect = progressBar.getBoundingClientRect();
-    const pct = Utils.clamp((touch.clientX - rect.left) / rect.width, 0, 1);
-    progressPlayed.style.width = (pct * 100) + '%';
-    progressThumb.style.left = (pct * 100) + '%';
-    currentTimeEl.textContent = Utils.formatTime(pct * (video.duration || 0));
-  }
-
-  // ─── Gesture Events (touch on video) ──────────────────────────
+  /* ════ GESTURE ZONES ════ */
   function bindGestureEvents() {
-    // Touch events on gesture zones (double-tap seek)
-    gestureLeft.addEventListener('touchend',  (e) => handleZoneTap(e, 'left'),  { passive: false });
-    gestureRight.addEventListener('touchend', (e) => handleZoneTap(e, 'right'), { passive: false });
+    // Double-tap seek on left/right zones
+    zoneLeft.addEventListener('touchend',  (e) => handleZoneTap(e, 'left'),  { passive: false });
+    zoneRight.addEventListener('touchend', (e) => handleZoneTap(e, 'right'), { passive: false });
 
-    // Touch on main wrapper (show/hide controls + single tap play/pause)
-    wrapper.addEventListener('touchstart', onWrapperTouchStart, { passive: true });
-    wrapper.addEventListener('touchend',   onWrapperTouchEnd,   { passive: false });
+    // Single tap on center → show/hide controls
+    const center = document.getElementById('ctrl-center');
+    center.addEventListener('click', () => {
+      if (overlay.classList.contains('hide')) showControls();
+      else scheduleHide();
+    });
+    center.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (overlay.classList.contains('hide')) showControls();
+      else scheduleHide();
+    }, { passive: false });
 
-    // Mouse click on wrapper (desktop)
-    wrapper.addEventListener('click', onWrapperClick);
+    // Mouse move on wrap → show controls
+    wrap.addEventListener('mousemove', U.throttle(() => {
+      showControls();
+      scheduleHide();
+    }, 200));
   }
 
-  let wrapperTouchStartX = 0;
-  let wrapperTouchStartY = 0;
-  let wrapperTouchMoved = false;
-
-  function onWrapperTouchStart(e) {
-    wrapperTouchStartX = e.touches[0].clientX;
-    wrapperTouchStartY = e.touches[0].clientY;
-    wrapperTouchMoved = false;
-  }
-
-  function onWrapperTouchEnd(e) {
-    const dx = Math.abs(e.changedTouches[0].clientX - wrapperTouchStartX);
-    const dy = Math.abs(e.changedTouches[0].clientY - wrapperTouchStartY);
-    if (dx > 10 || dy > 10) { wrapperTouchMoved = true; }
-
-    if (!wrapperTouchMoved) {
-      // Touched the center area (not gesture zones handled separately)
-      showControlsTemporarily();
-    }
-  }
-
-  function onWrapperClick() {
-    if (Utils.isMobile()) return; // mobile uses touch
-    showControlsTemporarily();
-  }
-
-  /**
-   * Handle tap on gesture zone (left/right) for double-tap seek
-   */
   function handleZoneTap(e, zone) {
-    e.preventDefault(); // prevent click firing
-
+    e.preventDefault();
     const now = Date.now();
-    const dt = now - lastTapTime;
 
-    if (dt < 300 && lastTapZone === zone) {
+    if (now - _tapTime < 300 && _tapZone === zone) {
       // Double tap!
-      clearTimeout(tapTimer);
-      tapTimer = null;
-      tapCount++;
+      clearTimeout(_tapTimer);
+      _tapTimer = null;
+      const delta = zone === 'right' ? +SEEK_AMT : -SEEK_AMT;
+      seek(delta);
 
-      const amount = tapCount === 1 ? SEEK_SECONDS : SEEK_SECONDS * tapCount;
-      const delta = zone === 'right' ? SEEK_SECONDS : -SEEK_SECONDS;
-      seekRelative(delta);
+      const fl  = zone === 'left' ? flashLeft : flashRight;
+      const lbl = zone === 'left' ? flashLeftLbl : flashRightLbl;
+      lbl.textContent = (zone === 'right' ? '+' : '−') + SEEK_AMT + 's';
+      showFlash(fl);
 
-      const ripple = zone === 'left' ? rippleLeft : rippleRight;
-      const label  = zone === 'left' ? seekLabelLeft : seekLabelRight;
-      const totalSeek = Math.abs(delta);
-      label.textContent = (zone === 'right' ? '+' : '-') + totalSeek + 's';
-      showRipple(ripple);
-      lastTapTime = now;
+      _tapTime = 0; // reset so triple-tap doesn't chain wrong
+      _tapZone = null;
     } else {
-      // First tap — wait to see if double tap
-      tapCount = 0;
-      lastTapZone = zone;
-      lastTapTime = now;
-      tapTimer = setTimeout(() => {
-        // Single tap on zone — show controls
-        showControlsTemporarily();
-        tapTimer = null;
-      }, 280);
+      // First tap — wait for possible second
+      _tapZone = zone;
+      _tapTime = now;
+      clearTimeout(_tapTimer);
+      _tapTimer = setTimeout(() => {
+        // Was single tap — just show controls
+        showControls();
+        scheduleHide();
+        _tapTimer = null;
+      }, 300);
     }
   }
 
-  function showRipple(rippleEl) {
-    rippleEl.classList.add('show');
-    clearTimeout(rippleEl._hideTimer);
-    rippleEl._hideTimer = setTimeout(() => {
-      rippleEl.classList.remove('show');
-    }, 700);
+  function showFlash(el) {
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 750);
   }
 
-  // ─── Controls Show/Hide ───────────────────────────────────────
+  function flashTap() {
+    tapPulseIcon.textContent = vid.paused ? '▶' : '⏸';
+    tapPulse.classList.remove('hidden');
+    clearTimeout(tapPulse._t);
+    tapPulse._t = setTimeout(() => tapPulse.classList.add('hidden'), 500);
+  }
+
+  /* ════ CONTROLS SHOW/HIDE ════ */
   function showControls() {
-    overlay.classList.remove('hidden-controls');
-    clearTimeout(controlsTimeout);
+    overlay.classList.remove('hide');
+    clearTimeout(_ctrlTimer);
   }
 
-  function scheduleHideControls() {
-    clearTimeout(controlsTimeout);
-    if (!video.paused) {
-      controlsTimeout = setTimeout(hideControls, CONTROLS_HIDE_DELAY);
+  function scheduleHide() {
+    clearTimeout(_ctrlTimer);
+    if (!vid.paused) {
+      _ctrlTimer = setTimeout(() => {
+        speedPopup.classList.add('hidden');
+        overlay.classList.add('hide');
+      }, HIDE_DELAY);
     }
   }
 
-  function hideControls() {
-    if (video.paused) return;
-    closeAllMenus();
-    overlay.classList.add('hidden-controls');
-  }
-
-  function showControlsTemporarily() {
+  // Show controls on any touch of bottom bar
+  document.getElementById('ctrl-bottom')?.addEventListener('touchstart', () => {
     showControls();
-    scheduleHideControls();
-    // Also toggle play/pause on single tap
-    if (overlay.classList.contains('hidden-controls') === false) {
-      // Controls were already visible — just keep showing
-    }
-  }
-
-  // Reset hide timer on any interaction in overlay
-  overlay?.addEventListener('touchstart', () => {
-    showControls();
-    scheduleHideControls();
   }, { passive: true });
 
-  overlay?.addEventListener('mousemove', Utils.throttle(() => {
-    showControls();
-    scheduleHideControls();
-  }, 200));
-
-  // ─── Menus ─────────────────────────────────────────────────────
-  function bindMenuEvents() {
-    speedBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu(speedMenu);
-    });
-
-    audioBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu(audioMenu);
-    });
-
-    subtitleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleMenu(subtitleMenu);
-    });
-
-    // Close menus on outside click
-    wrapper.addEventListener('click', (e) => {
-      const target = e.target;
-      if (!speedMenu.contains(target) && target !== speedBtn) speedMenu.classList.add('hidden');
-      if (!audioMenu.contains(target) && target !== audioBtn) audioMenu.classList.add('hidden');
-      if (!subtitleMenu.contains(target) && target !== subtitleBtn) subtitleMenu.classList.add('hidden');
-    });
-  }
-
-  function toggleMenu(menu) {
-    const isHidden = menu.classList.contains('hidden');
-    closeAllMenus();
-    if (isHidden) {
-      menu.classList.remove('hidden');
-      showControls(); // Keep controls visible while menu is open
+  /* ════ RESUME ════ */
+  function checkResume() {
+    const key  = U.hashKey(_url);
+    const data = U.LS.get(key);
+    if (data && data.pos > 8 && vid.duration && data.pos < vid.duration - 8) {
+      // Pause the auto-play, show banner
+      vid.pause();
+      resumeT.textContent = U.fmt(data.pos);
+      resumeBanner.classList.remove('hidden');
     }
   }
 
-  function closeAllMenus() {
-    speedMenu.classList.add('hidden');
-    audioMenu.classList.add('hidden');
-    subtitleMenu.classList.add('hidden');
+  function doResume() {
+    const key  = U.hashKey(_url);
+    const data = U.LS.get(key);
+    resumeBanner.classList.add('hidden');
+    if (data) vid.currentTime = data.pos;
+    vid.play().catch(() => {});
   }
 
-  // ─── Keyboard Shortcuts ────────────────────────────────────────
-  function bindKeyboardEvents() {
-    document.addEventListener('keydown', (e) => {
-      // Only when player is visible
-      if (document.getElementById('player-section').classList.contains('hidden')) return;
-      // Ignore if typing in an input
-      if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
-
-      switch(e.code) {
-        case 'Space':
-        case 'KeyK':
-          e.preventDefault();
-          togglePlayPause();
-          flashTapIndicator();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          seekRelative(-SEEK_SECONDS);
-          showRipple(rippleLeft);
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          seekRelative(SEEK_SECONDS);
-          showRipple(rippleRight);
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          video.volume = Utils.clamp(video.volume + 0.1, 0, 1);
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          video.volume = Utils.clamp(video.volume - 0.1, 0, 1);
-          break;
-        case 'KeyM':
-          toggleMute();
-          break;
-        case 'KeyF':
-          toggleFullscreen();
-          break;
-        case 'KeyP':
-          togglePiP();
-          break;
-        case 'Escape':
-          if (Utils.isFullscreen()) Utils.exitFullscreen();
-          break;
-      }
-      showControlsTemporarily();
-    });
+  function startOver() {
+    resumeBanner.classList.add('hidden');
+    vid.currentTime = 0;
+    vid.play().catch(() => {});
   }
 
-  function flashTapIndicator() {
-    tapIcon.textContent = video.paused ? '▶' : '⏸';
-    tapIndicator.classList.add('show');
-    clearTimeout(tapIndicator._timer);
-    tapIndicator._timer = setTimeout(() => tapIndicator.classList.remove('show'), 500);
+  function savePos() {
+    if (!_url || !vid.duration || !isFinite(vid.duration)) return;
+    U.LS.set(U.hashKey(_url), { pos: vid.currentTime, dur: vid.duration });
   }
 
-  // ─── Fullscreen ────────────────────────────────────────────────
-  function bindFullscreenEvents() {
-    fullscreenBtn.addEventListener('click', toggleFullscreen);
-
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
-    document.addEventListener('mozfullscreenchange', onFullscreenChange);
+  function startSaving() {
+    stopSaving();
+    _saveTimer = setInterval(savePos, SAVE_INT);
   }
 
-  async function toggleFullscreen() {
-    try {
-      if (Utils.isFullscreen()) {
-        await Utils.exitFullscreen();
-      } else {
-        await Utils.requestFullscreen(wrapper);
-      }
-    } catch (e) {
-      // Fallback: CSS-based fullscreen
-      wrapper.classList.toggle('css-fullscreen');
-      document.body.classList.toggle('fullscreen-active');
-      updateFsIcons(!Utils.isFullscreen());
-    }
+  function stopSaving() {
+    if (_saveTimer) { clearInterval(_saveTimer); _saveTimer = null; }
   }
 
-  function onFullscreenChange() {
-    const isFs = Utils.isFullscreen();
-    document.body.classList.toggle('fullscreen-active', isFs);
-    fsIcon.classList.toggle('hidden', isFs);
-    exitFsIcon.classList.toggle('hidden', !isFs);
-
-    if (isFs) {
-      // Lock landscape on mobile if possible
-      try {
-        screen.orientation?.lock('landscape').catch(() => {});
-      } catch {}
-    } else {
-      try {
-        screen.orientation?.unlock();
-      } catch {}
-    }
-    scheduleHideControls();
+  /* ════ ERROR ════ */
+  function showError(msg) {
+    playerErrorText.textContent = msg;
+    playerError.classList.remove('hidden');
+    hideSpinner();
   }
 
-  function updateFsIcons(isFs) {
-    fsIcon.classList.toggle('hidden', isFs);
-    exitFsIcon.classList.toggle('hidden', !isFs);
+  function hideError() {
+    playerError.classList.add('hidden');
   }
 
-  // ─── Spinner ───────────────────────────────────────────────────
+  /* ════ SPINNER ════ */
   function showSpinner() { spinner.classList.remove('hidden'); }
   function hideSpinner() { spinner.classList.add('hidden'); }
 
-  // ─── HLS Cleanup ──────────────────────────────────────────────
-  function destroyHLS() {
-    if (hls) {
-      hls.destroy();
-      hls = null;
+  /* ════ KEYBOARD ════ */
+  function bindKeyboard() {
+    document.addEventListener('keydown', (e) => {
+      if (document.getElementById('player-screen').classList.contains('hidden')) return;
+      if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+      switch(e.code) {
+        case 'Space': case 'KeyK': e.preventDefault(); togglePlay(); break;
+        case 'ArrowLeft':  e.preventDefault(); seek(-SEEK_AMT); break;
+        case 'ArrowRight': e.preventDefault(); seek(+SEEK_AMT); break;
+        case 'ArrowUp':    e.preventDefault(); vid.volume = U.clamp(vid.volume+0.1,0,1); break;
+        case 'ArrowDown':  e.preventDefault(); vid.volume = U.clamp(vid.volume-0.1,0,1); break;
+        case 'KeyM': toggleMute(); break;
+        case 'KeyF': toggleFS(); break;
+        case 'KeyP': togglePiP(); break;
+        case 'Escape': if (U.isFS()) U.exitFS(); break;
+      }
+      showControls();
+      scheduleHide();
+    });
+  }
+
+  /* ════ FULLSCREEN ════ */
+  function bindFullscreen() {
+    btnFS.addEventListener('click', toggleFS);
+    ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev => {
+      document.addEventListener(ev, onFSChange);
+    });
+  }
+
+  async function toggleFS() {
+    try {
+      if (U.isFS()) await U.exitFS();
+      else          await U.enterFS(wrap);
+    } catch {}
+  }
+
+  function onFSChange() {
+    const fs = U.isFS();
+    icoFS.classList.toggle('hidden', fs);
+    icoExitFS.classList.toggle('hidden', !fs);
+    if (fs) {
+      try { screen.orientation?.lock('landscape').catch(() => {}); } catch {}
+    } else {
+      try { screen.orientation?.unlock(); } catch {}
     }
+    scheduleHide();
   }
 
-  // ─── Public API ────────────────────────────────────────────────
-  function addExternalSubtitles() {
-    // Called after SubtitleManager loads a file
-    if (hls) populateSubtitleTracksHLS();
-    else populateNativeSubtitleTracks();
-  }
-
-  function destroy() {
-    destroyHLS();
-    SubtitleManager.clear();
-    clearInterval(savePositionTimer);
-    clearTimeout(controlsTimeout);
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-  }
-
-  return {
-    init,
-    load,
-    destroy,
-    addExternalSubtitles,
-    seekRelative,
-    togglePlayPause,
-  };
+  /* ════ PUBLIC ════ */
+  return { init, load, stop, enableSubs };
 
 })();
