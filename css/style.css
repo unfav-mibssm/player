@@ -1,38 +1,36 @@
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; touch-action: manipulation; }
 body { background: #06080e; color: #e4e6f0; font-family: 'Outfit', sans-serif; font-weight: 400; min-height: 100dvh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
 button { cursor: pointer; border: none; background: none; color: inherit; font-family: inherit; }
-input { font-family: inherit; }
+input  { font-family: inherit; }
 .hidden { display: none !important; }
 
-/* ── Variables ── */
 :root {
-  --bg:        #06080e;
-  --surface:   #0d1018;
-  --surface2:  #131720;
-  --border:    rgba(255,255,255,0.08);
-  --border2:   rgba(255,255,255,0.13);
-  --text:      #e4e6f0;
-  --dim:       rgba(228,230,240,0.4);
-  --gold:      #d4a843;
-  --gold2:     #b8902e;
-  --gold-glow: rgba(212,168,67,0.15);
-  --red:       #e05555;
-  --red-bg:    rgba(224,85,85,0.1);
-  --radius:    16px;
-  --safe-b:    env(safe-area-inset-bottom, 0px);
-  --safe-t:    env(safe-area-inset-top, 0px);
+  --bg:       #06080e;
+  --surface:  #0d1018;
+  --surface2: #131720;
+  --border:   rgba(255,255,255,0.08);
+  --border2:  rgba(255,255,255,0.13);
+  --text:     #e4e6f0;
+  --dim:      rgba(228,230,240,0.4);
+  --gold:     #d4a843;
+  --gold2:    #b8902e;
+  --gold-glow:rgba(212,168,67,0.15);
+  --red:      #e05555;
+  --red-bg:   rgba(224,85,85,0.1);
+  --radius:   16px;
+  --safe-b:   env(safe-area-inset-bottom, 0px);
+  --safe-t:   env(safe-area-inset-top, 0px);
 }
 
-/* ══ HOME SCREEN ══ */
+/* ── Home Screen ── */
 #home-screen {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
 }
 
-/* ── Header ── */
 .site-header {
   padding: calc(var(--safe-t) + 18px) 22px 14px;
   display: flex;
@@ -46,8 +44,7 @@ input { font-family: inherit; }
 }
 
 .logo-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--gold);
   box-shadow: 0 0 10px var(--gold);
@@ -55,11 +52,9 @@ input { font-family: inherit; }
 }
 
 .logo-text {
-  font-family: 'Outfit', sans-serif;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--text);
 }
 
 /* ── Hero ── */
@@ -74,13 +69,11 @@ input { font-family: inherit; }
 
 .hero-glow {
   position: absolute;
-  width: 500px;
-  height: 500px;
+  width: 500px; height: 500px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(212,168,67,0.07) 0%, transparent 65%);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
   pointer-events: none;
 }
 
@@ -105,11 +98,11 @@ input { font-family: inherit; }
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: title-shimmer 5s ease-in-out infinite;
+  animation: shimmer 5s ease-in-out infinite;
   text-align: center;
 }
 
-@keyframes title-shimmer {
+@keyframes shimmer {
   0%,100% { background-position: 0% 50%; }
   50%      { background-position: 100% 50%; }
 }
@@ -138,11 +131,7 @@ input { font-family: inherit; }
   border-bottom: 1px solid var(--border);
 }
 
-.input-icon {
-  color: var(--dim);
-  flex-shrink: 0;
-  margin-right: 10px;
-}
+.input-icon { color: var(--dim); flex-shrink: 0; margin-right: 10px; }
 
 #url-input {
   flex: 1;
@@ -155,7 +144,6 @@ input { font-family: inherit; }
   caret-color: var(--gold);
   min-width: 0;
 }
-
 #url-input::placeholder { color: var(--dim); }
 
 .url-clear {
@@ -167,8 +155,7 @@ input { font-family: inherit; }
   transition: opacity 0.2s;
   flex-shrink: 0;
 }
-
-.url-clear.show { opacity: 1; }
+.url-clear.show  { opacity: 1; }
 .url-clear:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 
 .card-actions {
@@ -186,14 +173,12 @@ input { font-family: inherit; }
   padding: 13px 20px;
   background: linear-gradient(135deg, var(--gold) 0%, var(--gold2) 100%);
   color: #1a0e00;
-  font-family: 'Outfit', sans-serif;
   font-size: 15px;
   font-weight: 700;
   border-radius: 10px;
   transition: transform 0.15s, box-shadow 0.15s;
   box-shadow: 0 4px 20px rgba(212,168,67,0.3);
 }
-
 .btn-play:hover  { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(212,168,67,0.45); }
 .btn-play:active { transform: scale(0.97); }
 .btn-play-icon   { font-size: 13px; }
@@ -213,10 +198,8 @@ input { font-family: inherit; }
   transition: border-color 0.2s, color 0.2s;
   white-space: nowrap;
 }
-
 .btn-sub:hover { border-color: var(--gold); color: var(--gold); }
 
-/* Sub loaded badge */
 .sub-loaded-badge {
   display: flex;
   align-items: center;
@@ -226,19 +209,11 @@ input { font-family: inherit; }
   font-size: 13px;
   color: var(--gold);
 }
-
 .sub-loaded-badge svg { flex-shrink: 0; }
 .sub-loaded-badge span { flex: 1; }
-
-#sub-remove {
-  font-size: 13px;
-  opacity: 0.6;
-  padding: 2px 5px;
-  border-radius: 4px;
-}
+#sub-remove { font-size: 13px; opacity: 0.6; padding: 2px 5px; border-radius: 4px; }
 #sub-remove:hover { opacity: 1; background: rgba(255,255,255,0.07); }
 
-/* Home error */
 .home-error {
   width: 100%;
   display: flex;
@@ -253,17 +228,14 @@ input { font-family: inherit; }
   line-height: 1.5;
   animation: fadein 0.2s ease;
 }
-
 @keyframes fadein { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
 
-/* Format tags */
 .format-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 7px;
 }
-
 .ftag {
   padding: 4px 11px;
   border: 1px solid var(--border);
@@ -283,20 +255,8 @@ input { font-family: inherit; }
   padding: 14px 22px calc(var(--safe-b) + 14px);
   border-top: 1px solid var(--border);
 }
+.footer-brand { font-size: 12px; font-weight: 600; color: rgba(212,168,67,0.45); letter-spacing: 0.04em; }
+.footer-note  { font-size: 11px; color: var(--dim); opacity: 0.5; }
 
-.footer-brand {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(212,168,67,0.45);
-  letter-spacing: 0.04em;
-}
-
-.footer-note {
-  font-size: 11px;
-  color: var(--dim);
-  opacity: 0.5;
-}
-
-/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
