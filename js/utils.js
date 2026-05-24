@@ -1,7 +1,7 @@
 'use strict';
 
 const U = (() => {
-
+  
   function fmt(sec) {
     if (!isFinite(sec) || sec < 0) return '0:00';
     const s = Math.floor(sec);
@@ -11,32 +11,26 @@ const U = (() => {
     if (h > 0) return `${h}:${pad(m)}:${pad(ss)}`;
     return `${m}:${pad(ss)}`;
   }
-
+  
   function pad(n) { return String(n).padStart(2, '0'); }
-
+  
   function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
-
-  function debounce(fn, ms) {
-    let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-  }
-
+  
   function throttle(fn, ms) {
     let last = 0;
     return (...a) => {
       const now = Date.now();
-      if (now - last >= ms) { last = now; fn(...a); }
+      if (now - last >= ms) { last = now;
+        fn(...a); }
     };
   }
-
-  /* LocalStorage helpers — never throw */
+  
   const LS = {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-    get(k)    { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } },
-    del(k)    { try { localStorage.removeItem(k); } catch {} }
+    get(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
   };
-
-  /* Stable hash key from URL */
+  
   function hashKey(url) {
     let h = 0;
     for (let i = 0; i < Math.min(url.length, 120); i++) {
@@ -45,17 +39,7 @@ const U = (() => {
     }
     return 'mb_pos_' + Math.abs(h);
   }
-
-  /* Detect content type from URL (best effort) */
-  function typeOf(url) {
-    const u = url.toLowerCase().split('?')[0];
-    if (u.endsWith('.mkv'))  return 'mkv';
-    if (u.endsWith('.webm')) return 'webm';
-    if (u.endsWith('.mp4'))  return 'mp4';
-    return 'mp4'; // assume mp4 for CDN links
-  }
-
-  /* Extract display title from URL */
+  
   function titleOf(url) {
     try {
       const parts = new URL(url).pathname.split('/').filter(Boolean);
@@ -63,23 +47,26 @@ const U = (() => {
       return decodeURIComponent(last.replace(/\.[^.]+$/, '').replace(/[._-]+/g, ' ')).trim() || 'Video';
     } catch { return 'Video'; }
   }
-
-  /* Fullscreen helpers */
+  
+  /* Detect if URL likely contains HEVC/x265/10bit content */
+  function isHEVC(url) {
+    const u = (url || '').toLowerCase();
+    return /hevc|x265|h265|10bit|hi10|hdr|10-bit/.test(u);
+  }
+  
   function enterFS(el) {
-    return (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen || (() => Promise.reject())).call(el);
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    return fn ? fn.call(el) : Promise.reject();
   }
-
+  
   function exitFS() {
-    return (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen || (() => Promise.reject())).call(document);
+    const fn = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+    return fn ? fn.call(document) : Promise.reject();
   }
-
+  
   function isFS() {
     return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
   }
-
-  function isMobile() {
-    return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-  }
-
-  return { fmt, clamp, debounce, throttle, LS, hashKey, typeOf, titleOf, enterFS, exitFS, isFS, isMobile };
+  
+  return { fmt, pad, clamp, throttle, LS, hashKey, titleOf, isHEVC, enterFS, exitFS, isFS };
 })();
