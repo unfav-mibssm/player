@@ -1,39 +1,40 @@
 'use strict';
 
 /* ════════════════════════════════════════════
-   PLAYER.JS — Core video player
-   Fixed bugs:
-   - Resume banner doesn't block playback
-   - Speed resets between videos
-   - Controls hide properly
-   - Subtitle toggle works correctly
-   - Seekbar drag fixed on mobile
-   - History back button works
+   PLAYER.JS
+   All bugs fixed:
+   - Speed resets on new video
+   - Resume works correctly
+   - Seekbar works on mobile touch
+   - Controls auto-hide properly
+   - Time display toggles elapsed/remaining on tap
+   - VLC button shown only for HEVC/x265/10bit URLs
+   - Subtitle toggle works
+   - Browser back button works
    ════════════════════════════════════════════ */
 
 const Player = (() => {
 
-  /* ── DOM ── */
-  let vid, wrap;
-  let spinner;
-  let overlay;
-  let btnPP, icoPl, icoPa;
-  let btnRW, btnFF;
-  let btnMute, icoVol, icoMute;
+  /* ── DOM refs ── */
+  let vid, wrap, spinner, overlay;
+  let btnPP, icoPlay, icoPause;
+  let btnRW, btnFF, btnMute, icoVol, icoMute;
   let seekbar, sbBuf, sbPlay, sbThumb;
-  let tCur, tDur;
+  let timeDisplay, tCur, tDur;
   let btnFS, icoFS, icoExitFS;
-  let btnBack, btnPiP;
-  let btnSpeed, speedLbl;
-  let btnSubToggle;
-  let speedPopup, speedList;
+  let btnBack, btnPiP, btnVLC;
+  let btnSpeed, speedLbl, speedPopup, speedList;
+  let btnSubToggle, btnSubSearch;
   let subDisplay;
-  let zoneLeft, zoneRight;
-  let flashLeft, flashRight, flashLeftLbl, flashRightLbl;
+  let subPanel, subPanelClose;
+  let subSearchInput, subSearchBtn, subSearchStatus, subResults;
+  let subFilePlayer;
+  let zoneLeft, zoneRight, flashLeft, flashRight, flashLeftLbl, flashRightLbl;
   let tapPulse, tapPulseIcon;
   let resumeBanner, resumeT, resumeYes, resumeNo;
   let playerError, playerErrorText, peBack;
   let vidTitle;
+  let ctrlBottom;
 
   /* ── State ── */
   let _url         = '';
@@ -42,8 +43,9 @@ const Player = (() => {
   let _dragging    = false;
   let _speed       = 1;
   let _subOn       = false;
+  let _showRemaining = false;   // time display mode
 
-  // Double-tap detection
+  /* Double-tap detection */
   let _tapTime  = 0;
   let _tapZone  = null;
   let _tapTimer = null;
@@ -53,76 +55,93 @@ const Player = (() => {
   const HIDE_DELAY = 3500;
   const SAVE_INT   = 5000;
 
-  /* ════ INIT ════ */
+  /* ══════════════════════════════════════════
+     INIT
+  ══════════════════════════════════════════ */
   function init() {
-    vid           = document.getElementById('vid');
-    wrap          = document.getElementById('player-wrap');
-    spinner       = document.getElementById('spinner');
-    overlay       = document.getElementById('ctrl-overlay');
-    btnPP         = document.getElementById('btn-pp');
-    icoPl         = document.getElementById('ico-play');
-    icoPa         = document.getElementById('ico-pause');
-    btnRW         = document.getElementById('btn-rw');
-    btnFF         = document.getElementById('btn-ff');
-    btnMute       = document.getElementById('btn-mute');
-    icoVol        = document.getElementById('ico-vol');
-    icoMute       = document.getElementById('ico-mute');
-    seekbar       = document.getElementById('seekbar');
-    sbBuf         = document.getElementById('sb-buf');
-    sbPlay        = document.getElementById('sb-play');
-    sbThumb       = document.getElementById('sb-thumb');
-    tCur          = document.getElementById('t-cur');
-    tDur          = document.getElementById('t-dur');
-    btnFS         = document.getElementById('btn-fs');
-    icoFS         = document.getElementById('ico-fs');
-    icoExitFS     = document.getElementById('ico-exit-fs');
-    btnBack       = document.getElementById('btn-back');
-    btnPiP        = document.getElementById('btn-pip');
-    btnSpeed      = document.getElementById('btn-speed');
-    speedLbl      = document.getElementById('speed-lbl');
-    btnSubToggle  = document.getElementById('btn-sub-toggle');
-    speedPopup    = document.getElementById('speed-popup');
-    speedList     = document.getElementById('speed-list');
-    subDisplay    = document.getElementById('sub-display');
-    zoneLeft      = document.getElementById('zone-left');
-    zoneRight     = document.getElementById('zone-right');
-    flashLeft     = document.getElementById('flash-left');
-    flashRight    = document.getElementById('flash-right');
-    flashLeftLbl  = document.getElementById('flash-left-label');
-    flashRightLbl = document.getElementById('flash-right-label');
-    tapPulse      = document.getElementById('tap-pulse');
-    tapPulseIcon  = document.getElementById('tap-pulse-icon');
-    resumeBanner  = document.getElementById('resume-banner');
-    resumeT       = document.getElementById('resume-t');
-    resumeYes     = document.getElementById('resume-yes');
-    resumeNo      = document.getElementById('resume-no');
-    playerError   = document.getElementById('player-error');
+    vid             = document.getElementById('vid');
+    wrap            = document.getElementById('player-wrap');
+    spinner         = document.getElementById('spinner');
+    overlay         = document.getElementById('ctrl-overlay');
+    btnPP           = document.getElementById('btn-pp');
+    icoPlay         = document.getElementById('ico-play');
+    icoPause        = document.getElementById('ico-pause');
+    btnRW           = document.getElementById('btn-rw');
+    btnFF           = document.getElementById('btn-ff');
+    btnMute         = document.getElementById('btn-mute');
+    icoVol          = document.getElementById('ico-vol');
+    icoMute         = document.getElementById('ico-mute');
+    seekbar         = document.getElementById('seekbar');
+    sbBuf           = document.getElementById('sb-buf');
+    sbPlay          = document.getElementById('sb-play');
+    sbThumb         = document.getElementById('sb-thumb');
+    timeDisplay     = document.getElementById('time-display');
+    tCur            = document.getElementById('t-cur');
+    tDur            = document.getElementById('t-dur');
+    btnFS           = document.getElementById('btn-fs');
+    icoFS           = document.getElementById('ico-fs');
+    icoExitFS       = document.getElementById('ico-exit-fs');
+    btnBack         = document.getElementById('btn-back');
+    btnPiP          = document.getElementById('btn-pip');
+    btnVLC          = document.getElementById('btn-vlc');
+    btnSpeed        = document.getElementById('btn-speed');
+    speedLbl        = document.getElementById('speed-lbl');
+    speedPopup      = document.getElementById('speed-popup');
+    speedList       = document.getElementById('speed-list');
+    btnSubToggle    = document.getElementById('btn-sub-toggle');
+    btnSubSearch    = document.getElementById('btn-sub-search');
+    subDisplay      = document.getElementById('sub-display');
+    subPanel        = document.getElementById('sub-panel');
+    subPanelClose   = document.getElementById('sub-panel-close');
+    subSearchInput  = document.getElementById('sub-search-input');
+    subSearchBtn    = document.getElementById('sub-search-btn');
+    subSearchStatus = document.getElementById('sub-search-status');
+    subResults      = document.getElementById('sub-results');
+    subFilePlayer   = document.getElementById('sub-file-player');
+    zoneLeft        = document.getElementById('zone-left');
+    zoneRight       = document.getElementById('zone-right');
+    flashLeft       = document.getElementById('flash-left');
+    flashRight      = document.getElementById('flash-right');
+    flashLeftLbl    = document.getElementById('flash-left-label');
+    flashRightLbl   = document.getElementById('flash-right-label');
+    tapPulse        = document.getElementById('tap-pulse');
+    tapPulseIcon    = document.getElementById('tap-pulse-icon');
+    resumeBanner    = document.getElementById('resume-banner');
+    resumeT         = document.getElementById('resume-t');
+    resumeYes       = document.getElementById('resume-yes');
+    resumeNo        = document.getElementById('resume-no');
+    playerError     = document.getElementById('player-error');
     playerErrorText = document.getElementById('player-error-text');
-    peBack        = document.getElementById('pe-back');
-    vidTitle      = document.getElementById('vid-title');
+    peBack          = document.getElementById('pe-back');
+    vidTitle        = document.getElementById('vid-title');
+    ctrlBottom      = document.getElementById('ctrl-bottom');
 
-    // Init subtitle engine
     Subs.init(vid, subDisplay);
 
     buildSpeedMenu();
     bindVideoEvents();
-    bindControlEvents();
-    bindSeekbarEvents();
-    bindGestureEvents();
+    bindControls();
+    bindSeekbar();
+    bindGestures();
     bindKeyboard();
     bindFullscreen();
+    bindSubPanel();
+    bindTimeToggle();
   }
 
-  /* ════ LOAD ════ */
+  /* ══════════════════════════════════════════
+     LOAD VIDEO
+  ══════════════════════════════════════════ */
   function load(url) {
     _url = url;
 
-    // Hard reset
     stop();
     hideError();
     resumeBanner.classList.add('hidden');
+    speedPopup.classList.add('hidden');
+    subPanel.classList.add('hidden');
 
-    // Reset speed to 1x on new video
+    /* Reset speed to 1× on every new video */
     _speed = 1;
     vid.playbackRate = 1;
     speedLbl.textContent = '1×';
@@ -130,56 +149,72 @@ const Player = (() => {
       el.classList.toggle('active', SPEEDS[i] === 1);
     });
 
-    // Reset subtitle state (but keep loaded file)
-    _subOn = Subs.isLoaded(); // auto-enable if file was pre-loaded
+    /* Reset time mode */
+    _showRemaining = false;
+    timeDisplay.classList.remove('show-remaining');
+
+    /* Subtitle state — keep loaded file but start enabled if loaded */
+    _subOn = Subs.isLoaded();
     syncSubBtn();
     if (_subOn) Subs.enable(); else Subs.disable();
 
+    /* VLC button — only for HEVC/x265/10bit URLs */
+    if (U.isHEVC(url)) {
+      btnVLC.classList.remove('hidden');
+      btnVLC.onclick = () => {
+        const vlcUrl = 'vlc://' + url;
+        window.location.href = vlcUrl;
+      };
+    } else {
+      btnVLC.classList.add('hidden');
+    }
+
     vidTitle.textContent = U.titleOf(url);
 
-    // Show spinner
-    showSpinner();
+    /* Pre-fill subtitle search with video title */
+    subSearchInput.value = U.titleOf(url);
 
-    // Set source — browser handles the rest
+    showSpinner();
     vid.src = url;
     vid.load();
-
     showControls();
   }
 
-  /* ════ VIDEO EVENTS ════ */
+  /* ══════════════════════════════════════════
+     VIDEO EVENTS
+  ══════════════════════════════════════════ */
   function bindVideoEvents() {
-    vid.addEventListener('play',            onPlay);
-    vid.addEventListener('pause',           onPause);
-    vid.addEventListener('ended',           onEnded);
-    vid.addEventListener('timeupdate',      onTime);
-    vid.addEventListener('progress',        onBuffer);
-    vid.addEventListener('waiting',         showSpinner);
-    vid.addEventListener('playing',         hideSpinner);
-    vid.addEventListener('canplay',         hideSpinner);
-    vid.addEventListener('loadedmetadata',  onMeta);
-    vid.addEventListener('durationchange',  onDuration);
-    vid.addEventListener('error',           onError);
-    vid.addEventListener('volumechange',    onVolume);
+    vid.addEventListener('play',           onPlay);
+    vid.addEventListener('pause',          onPause);
+    vid.addEventListener('ended',          onEnded);
+    vid.addEventListener('timeupdate',     onTime);
+    vid.addEventListener('progress',       onBuffer);
+    vid.addEventListener('waiting',        showSpinner);
+    vid.addEventListener('playing',        hideSpinner);
+    vid.addEventListener('canplay',        hideSpinner);
+    vid.addEventListener('loadedmetadata', onMeta);
+    vid.addEventListener('durationchange', onDuration);
+    vid.addEventListener('error',          onError);
+    vid.addEventListener('volumechange',   onVolume);
   }
 
   function onPlay() {
-    icoPl.classList.add('hidden');
-    icoPa.classList.remove('hidden');
+    icoPlay.classList.add('hidden');
+    icoPause.classList.remove('hidden');
     scheduleHide();
     startSaving();
   }
 
   function onPause() {
-    icoPl.classList.remove('hidden');
-    icoPa.classList.add('hidden');
+    icoPlay.classList.remove('hidden');
+    icoPause.classList.add('hidden');
     showControls();
     stopSaving();
   }
 
   function onEnded() {
-    icoPl.classList.remove('hidden');
-    icoPa.classList.add('hidden');
+    icoPlay.classList.remove('hidden');
+    icoPause.classList.add('hidden');
     showControls();
     stopSaving();
     savePos();
@@ -187,10 +222,20 @@ const Player = (() => {
 
   function onTime() {
     if (_dragging) return;
-    const pct = vid.duration ? vid.currentTime / vid.duration : 0;
+    const cur = vid.currentTime;
+    const dur = vid.duration || 0;
+    const pct = dur ? cur / dur : 0;
+
     sbPlay.style.width = (pct * 100) + '%';
     sbThumb.style.left = (pct * 100) + '%';
-    tCur.textContent = U.fmt(vid.currentTime);
+
+    if (_showRemaining && dur) {
+      tCur.textContent = '−' + U.fmt(dur - cur);
+      tDur.textContent = U.fmt(dur);
+    } else {
+      tCur.textContent = U.fmt(cur);
+      tDur.textContent = U.fmt(dur);
+    }
   }
 
   function onBuffer() {
@@ -201,17 +246,15 @@ const Player = (() => {
         end = Math.max(end, vid.buffered.end(i));
       }
     }
-    sbBuf.style.width = ((end / vid.duration) * 100) + '%';
+    sbBuf.style.width = (end / vid.duration * 100) + '%';
   }
 
   function onMeta() {
     tDur.textContent = U.fmt(vid.duration);
     hideSpinner();
-    // Attempt autoplay, then check resume
     vid.play().then(() => {
       checkResume();
     }).catch(() => {
-      // Autoplay blocked — show controls, wait for user tap
       showControls();
       checkResume();
     });
@@ -226,15 +269,15 @@ const Player = (() => {
   function onError() {
     hideSpinner();
     const e = vid.error;
-    let msg = 'Playback failed. The URL may be invalid or the file format is not supported by your browser.';
+    let msg = 'Playback failed. The URL may be invalid or the server blocked access.';
     if (e) {
       switch(e.code) {
         case MediaError.MEDIA_ERR_NETWORK:
           msg = 'Network error — could not load the video. Check the URL and your connection.'; break;
         case MediaError.MEDIA_ERR_DECODE:
-          msg = 'This file cannot be decoded. The codec (e.g. HEVC/x265) may not be supported on your browser/device. Try a different browser or a CDN link.'; break;
+          msg = 'This codec cannot be decoded by your browser. If this is HEVC/x265, use the "Open in VLC" button or try Safari on iPhone/Mac.'; break;
         case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-          msg = 'Format not supported. If this is an HEVC/MKV file, try opening it in Safari (iPhone/Mac) or use a CDN-hosted link.'; break;
+          msg = 'Format not supported by your browser. For HEVC/MKV files, try Safari (iPhone/Mac) or tap "Open in VLC".'; break;
       }
     }
     showError(msg);
@@ -246,23 +289,49 @@ const Player = (() => {
     icoMute.classList.toggle('hidden', !muted);
   }
 
-  /* ════ CONTROLS ════ */
-  function bindControlEvents() {
-    btnPP.addEventListener('click',  togglePlay);
-    btnRW.addEventListener('click',  () => seek(-SEEK_AMT));
-    btnFF.addEventListener('click',  () => seek(+SEEK_AMT));
-    btnMute.addEventListener('click',toggleMute);
+  /* ══════════════════════════════════════════
+     TIME DISPLAY TOGGLE
+  ══════════════════════════════════════════ */
+  function bindTimeToggle() {
+    timeDisplay.addEventListener('click', () => {
+      _showRemaining = !_showRemaining;
+      timeDisplay.classList.toggle('show-remaining', _showRemaining);
+      onTime(); // refresh immediately
+    });
+    timeDisplay.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      _showRemaining = !_showRemaining;
+      timeDisplay.classList.toggle('show-remaining', _showRemaining);
+      onTime();
+    }, { passive: false });
+  }
+
+  /* ══════════════════════════════════════════
+     CONTROLS
+  ══════════════════════════════════════════ */
+  function bindControls() {
+    btnPP.addEventListener('click',   togglePlay);
+    btnRW.addEventListener('click',   () => seek(-SEEK_AMT));
+    btnFF.addEventListener('click',   () => seek(+SEEK_AMT));
+    btnMute.addEventListener('click', () => { vid.muted = !vid.muted; });
     btnBack.addEventListener('click', goBack);
     btnPiP.addEventListener('click',  togglePiP);
-    btnSpeed.addEventListener('click', (e) => { e.stopPropagation(); togglePopup(); });
+
+    btnSpeed.addEventListener('click', (e) => {
+      e.stopPropagation();
+      speedPopup.classList.toggle('hidden');
+      if (!speedPopup.classList.contains('hidden')) showControls();
+    });
+
     btnSubToggle.addEventListener('click', toggleSubs);
+
     resumeYes.addEventListener('click', doResume);
     resumeNo.addEventListener('click',  startOver);
     peBack.addEventListener('click',    goBack);
 
-    // Close popup on outside tap
+    /* Close speed popup on outside click */
     wrap.addEventListener('click', (e) => {
-      if (!speedPopup.contains(e.target) && e.target !== btnSpeed) {
+      if (!speedPopup.contains(e.target) && e.target !== btnSpeed && !btnSpeed.contains(e.target)) {
         speedPopup.classList.add('hidden');
       }
     });
@@ -275,10 +344,9 @@ const Player = (() => {
   }
 
   function seek(delta) {
-    vid.currentTime = U.clamp(vid.currentTime + delta, 0, vid.duration || 0);
+    if (!vid.duration) return;
+    vid.currentTime = U.clamp(vid.currentTime + delta, 0, vid.duration);
   }
-
-  function toggleMute() { vid.muted = !vid.muted; }
 
   function goBack() {
     stop();
@@ -295,17 +363,20 @@ const Player = (() => {
   }
 
   function toggleSubs() {
-    if (!Subs.isLoaded()) return; // nothing loaded
+    if (!Subs.isLoaded()) {
+      /* Nothing loaded — open the search panel */
+      openSubPanel();
+      return;
+    }
     _subOn = !_subOn;
     syncSubBtn();
     if (_subOn) Subs.enable(); else Subs.disable();
   }
 
   function syncSubBtn() {
-    btnSubToggle.classList.toggle('active', _subOn && Subs.isLoaded());
+    btnSubToggle.classList.toggle('sub-on', _subOn && Subs.isLoaded());
   }
 
-  /* Enable subs externally (called from App after file loaded mid-playback) */
   function enableSubs() {
     _subOn = true;
     syncSubBtn();
@@ -319,101 +390,78 @@ const Player = (() => {
     stopSaving();
     hideSpinner();
     sbPlay.style.width = '0%';
-    sbBuf.style.width = '0%';
+    sbBuf.style.width  = '0%';
     sbThumb.style.left = '0%';
-    tCur.textContent = '0:00';
-    tDur.textContent = '0:00';
+    tCur.textContent   = '0:00';
+    tDur.textContent   = '0:00';
   }
 
-  /* ════ SPEED MENU ════ */
+  /* ══════════════════════════════════════════
+     SPEED MENU
+  ══════════════════════════════════════════ */
   function buildSpeedMenu() {
     speedList.innerHTML = '';
     SPEEDS.forEach(s => {
       const d = document.createElement('div');
       d.className = 'popup-item' + (s === 1 ? ' active' : '');
       d.innerHTML = `<span>${s}×</span><span class="check">✓</span>`;
-      d.addEventListener('click', () => setSpeed(s));
+      d.addEventListener('click', () => {
+        _speed = s;
+        vid.playbackRate = s;
+        speedLbl.textContent = s + '×';
+        speedList.querySelectorAll('.popup-item').forEach((el, i) => {
+          el.classList.toggle('active', SPEEDS[i] === s);
+        });
+        speedPopup.classList.add('hidden');
+      });
       speedList.appendChild(d);
     });
   }
 
-  function setSpeed(s) {
-    _speed = s;
-    vid.playbackRate = s;
-    speedLbl.textContent = s + '×';
-    speedList.querySelectorAll('.popup-item').forEach((el, i) => {
-      el.classList.toggle('active', SPEEDS[i] === s);
-    });
-    speedPopup.classList.add('hidden');
+  /* ══════════════════════════════════════════
+     SEEKBAR
+  ══════════════════════════════════════════ */
+  function bindSeekbar() {
+    seekbar.addEventListener('mousedown',  sbDown);
+    document.addEventListener('mousemove', sbMove);
+    document.addEventListener('mouseup',   sbUp);
+
+    seekbar.addEventListener('touchstart', sbTouchStart, { passive: false });
+    document.addEventListener('touchmove', sbTouchMove,  { passive: false });
+    document.addEventListener('touchend',  sbTouchEnd);
   }
 
-  function togglePopup() {
-    speedPopup.classList.toggle('hidden');
-    if (!speedPopup.classList.contains('hidden')) showControls();
-  }
+  function sbDown(e)  { _dragging = true; seekbar.classList.add('dragging'); sbUpdate(e.clientX); }
+  function sbMove(e)  { if (_dragging) sbUpdate(e.clientX); }
+  function sbUp()     { if (_dragging) { _dragging = false; seekbar.classList.remove('dragging'); sbCommit(); } }
 
-  /* ════ SEEKBAR ════ */
-  function bindSeekbarEvents() {
-    seekbar.addEventListener('mousedown',  onSBDown);
-    document.addEventListener('mousemove', onSBMove);
-    document.addEventListener('mouseup',   onSBUp);
-    seekbar.addEventListener('touchstart', onSBTouchStart, { passive: false });
-    document.addEventListener('touchmove', onSBTouchMove,  { passive: false });
-    document.addEventListener('touchend',  onSBTouchEnd);
-  }
+  function sbTouchStart(e) { e.preventDefault(); _dragging = true; seekbar.classList.add('dragging'); sbUpdate(e.touches[0].clientX); }
+  function sbTouchMove(e)  { if (_dragging) { e.preventDefault(); sbUpdate(e.touches[0].clientX); } }
+  function sbTouchEnd()    { if (_dragging) { _dragging = false; seekbar.classList.remove('dragging'); sbCommit(); } }
 
-  function onSBDown(e) {
-    _dragging = true;
-    seekbar.classList.add('dragging');
-    updateFromMouse(e.clientX);
-  }
-  function onSBMove(e) {
-    if (!_dragging) return;
-    updateFromMouse(e.clientX);
-  }
-  function onSBUp() {
-    if (!_dragging) return;
-    commitSeek();
-  }
-
-  function onSBTouchStart(e) {
-    e.preventDefault();
-    _dragging = true;
-    seekbar.classList.add('dragging');
-    updateFromMouse(e.touches[0].clientX);
-  }
-  function onSBTouchMove(e) {
-    if (!_dragging) return;
-    e.preventDefault();
-    updateFromMouse(e.touches[0].clientX);
-  }
-  function onSBTouchEnd() {
-    if (!_dragging) return;
-    commitSeek();
-  }
-
-  function updateFromMouse(clientX) {
+  function sbUpdate(clientX) {
     const rect = seekbar.getBoundingClientRect();
     const pct  = U.clamp((clientX - rect.left) / rect.width, 0, 1);
     sbPlay.style.width = (pct * 100) + '%';
     sbThumb.style.left = (pct * 100) + '%';
-    tCur.textContent   = U.fmt(pct * (vid.duration || 0));
+    const t = pct * (vid.duration || 0);
+    tCur.textContent = _showRemaining && vid.duration
+      ? '−' + U.fmt(vid.duration - t)
+      : U.fmt(t);
   }
 
-  function commitSeek() {
-    _dragging = false;
-    seekbar.classList.remove('dragging');
+  function sbCommit() {
     const pct = parseFloat(sbPlay.style.width) / 100;
     vid.currentTime = U.clamp(pct * (vid.duration || 0), 0, vid.duration || 0);
   }
 
-  /* ════ GESTURE ZONES ════ */
-  function bindGestureEvents() {
-    // Double-tap seek on left/right zones
+  /* ══════════════════════════════════════════
+     GESTURE ZONES (double-tap seek)
+  ══════════════════════════════════════════ */
+  function bindGestures() {
     zoneLeft.addEventListener('touchend',  (e) => handleZoneTap(e, 'left'),  { passive: false });
     zoneRight.addEventListener('touchend', (e) => handleZoneTap(e, 'right'), { passive: false });
 
-    // Single tap on center → show/hide controls
     const center = document.getElementById('ctrl-center');
     center.addEventListener('click', () => {
       if (overlay.classList.contains('hide')) showControls();
@@ -425,7 +473,6 @@ const Player = (() => {
       else scheduleHide();
     }, { passive: false });
 
-    // Mouse move on wrap → show controls
     wrap.addEventListener('mousemove', U.throttle(() => {
       showControls();
       scheduleHide();
@@ -435,28 +482,22 @@ const Player = (() => {
   function handleZoneTap(e, zone) {
     e.preventDefault();
     const now = Date.now();
-
     if (now - _tapTime < 300 && _tapZone === zone) {
-      // Double tap!
       clearTimeout(_tapTimer);
       _tapTimer = null;
       const delta = zone === 'right' ? +SEEK_AMT : -SEEK_AMT;
       seek(delta);
-
-      const fl  = zone === 'left' ? flashLeft : flashRight;
+      const fl  = zone === 'left' ? flashLeft  : flashRight;
       const lbl = zone === 'left' ? flashLeftLbl : flashRightLbl;
       lbl.textContent = (zone === 'right' ? '+' : '−') + SEEK_AMT + 's';
       showFlash(fl);
-
-      _tapTime = 0; // reset so triple-tap doesn't chain wrong
+      _tapTime = 0;
       _tapZone = null;
     } else {
-      // First tap — wait for possible second
       _tapZone = zone;
       _tapTime = now;
       clearTimeout(_tapTimer);
       _tapTimer = setTimeout(() => {
-        // Was single tap — just show controls
         showControls();
         scheduleHide();
         _tapTimer = null;
@@ -477,7 +518,9 @@ const Player = (() => {
     tapPulse._t = setTimeout(() => tapPulse.classList.add('hidden'), 500);
   }
 
-  /* ════ CONTROLS SHOW/HIDE ════ */
+  /* ══════════════════════════════════════════
+     CONTROLS SHOW / HIDE
+  ══════════════════════════════════════════ */
   function showControls() {
     overlay.classList.remove('hide');
     clearTimeout(_ctrlTimer);
@@ -493,17 +536,19 @@ const Player = (() => {
     }
   }
 
-  // Show controls on any touch of bottom bar
-  document.getElementById('ctrl-bottom')?.addEventListener('touchstart', () => {
-    showControls();
-  }, { passive: true });
+  /* Keep controls visible when touching bottom bar */
+  document.addEventListener('DOMContentLoaded', () => {
+    ctrlBottom?.addEventListener('touchstart', () => {
+      showControls();
+    }, { passive: true });
+  });
 
-  /* ════ RESUME ════ */
+  /* ══════════════════════════════════════════
+     RESUME
+  ══════════════════════════════════════════ */
   function checkResume() {
-    const key  = U.hashKey(_url);
-    const data = U.LS.get(key);
+    const data = U.LS.get(U.hashKey(_url));
     if (data && data.pos > 8 && vid.duration && data.pos < vid.duration - 8) {
-      // Pause the auto-play, show banner
       vid.pause();
       resumeT.textContent = U.fmt(data.pos);
       resumeBanner.classList.remove('hidden');
@@ -511,8 +556,7 @@ const Player = (() => {
   }
 
   function doResume() {
-    const key  = U.hashKey(_url);
-    const data = U.LS.get(key);
+    const data = U.LS.get(U.hashKey(_url));
     resumeBanner.classList.add('hidden');
     if (data) vid.currentTime = data.pos;
     vid.play().catch(() => {});
@@ -538,7 +582,9 @@ const Player = (() => {
     if (_saveTimer) { clearInterval(_saveTimer); _saveTimer = null; }
   }
 
-  /* ════ ERROR ════ */
+  /* ══════════════════════════════════════════
+     ERROR
+  ══════════════════════════════════════════ */
   function showError(msg) {
     playerErrorText.textContent = msg;
     playerError.classList.remove('hidden');
@@ -549,33 +595,41 @@ const Player = (() => {
     playerError.classList.add('hidden');
   }
 
-  /* ════ SPINNER ════ */
+  /* ══════════════════════════════════════════
+     SPINNER
+  ══════════════════════════════════════════ */
   function showSpinner() { spinner.classList.remove('hidden'); }
   function hideSpinner() { spinner.classList.add('hidden'); }
 
-  /* ════ KEYBOARD ════ */
+  /* ══════════════════════════════════════════
+     KEYBOARD
+  ══════════════════════════════════════════ */
   function bindKeyboard() {
     document.addEventListener('keydown', (e) => {
       if (document.getElementById('player-screen').classList.contains('hidden')) return;
       if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
-
       switch(e.code) {
         case 'Space': case 'KeyK': e.preventDefault(); togglePlay(); break;
         case 'ArrowLeft':  e.preventDefault(); seek(-SEEK_AMT); break;
         case 'ArrowRight': e.preventDefault(); seek(+SEEK_AMT); break;
-        case 'ArrowUp':    e.preventDefault(); vid.volume = U.clamp(vid.volume+0.1,0,1); break;
-        case 'ArrowDown':  e.preventDefault(); vid.volume = U.clamp(vid.volume-0.1,0,1); break;
-        case 'KeyM': toggleMute(); break;
+        case 'ArrowUp':    e.preventDefault(); vid.volume = U.clamp(vid.volume + 0.1, 0, 1); break;
+        case 'ArrowDown':  e.preventDefault(); vid.volume = U.clamp(vid.volume - 0.1, 0, 1); break;
+        case 'KeyM': vid.muted = !vid.muted; break;
         case 'KeyF': toggleFS(); break;
         case 'KeyP': togglePiP(); break;
-        case 'Escape': if (U.isFS()) U.exitFS(); break;
+        case 'Escape':
+          if (!subPanel.classList.contains('hidden')) { subPanel.classList.add('hidden'); break; }
+          if (U.isFS()) U.exitFS();
+          break;
       }
       showControls();
       scheduleHide();
     });
   }
 
-  /* ════ FULLSCREEN ════ */
+  /* ══════════════════════════════════════════
+     FULLSCREEN
+  ══════════════════════════════════════════ */
   function bindFullscreen() {
     btnFS.addEventListener('click', toggleFS);
     ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev => {
@@ -602,7 +656,131 @@ const Player = (() => {
     scheduleHide();
   }
 
-  /* ════ PUBLIC ════ */
+  /* ══════════════════════════════════════════
+     SUBTITLE SEARCH PANEL
+  ══════════════════════════════════════════ */
+  function bindSubPanel() {
+    btnSubSearch.addEventListener('click', openSubPanel);
+
+    subPanelClose.addEventListener('click', () => {
+      subPanel.classList.add('hidden');
+    });
+
+    subSearchBtn.addEventListener('click', runSubSearch);
+
+    subSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runSubSearch();
+    });
+
+    /* File upload inside panel */
+    subFilePlayer.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const n = await Subs.loadFile(file);
+        subPanel.classList.add('hidden');
+        enableSubs();
+        window.App?.updateSubBadge(file.name, n);
+      } catch(err) {
+        setStatus('error', err);
+      }
+      subFilePlayer.value = '';
+    });
+  }
+
+  function openSubPanel() {
+    subPanel.classList.remove('hidden');
+    subResults.innerHTML = '';
+    setStatus('hidden');
+    showControls(); // keep controls visible
+    setTimeout(() => subSearchInput.focus(), 200);
+  }
+
+  async function runSubSearch() {
+    const q = subSearchInput.value.trim();
+    if (!q) { setStatus('error', 'Please enter a movie or show name.'); return; }
+
+    subResults.innerHTML = '';
+    setStatus('loading', 'Searching…');
+    subSearchBtn.disabled = true;
+
+    try {
+      const results = await SubSearch.search(q);
+      setStatus('hidden');
+      renderResults(results);
+    } catch(err) {
+      setStatus('error', err.message || String(err));
+    } finally {
+      subSearchBtn.disabled = false;
+    }
+  }
+
+  function renderResults(results) {
+    subResults.innerHTML = '';
+    if (results.length === 0) {
+      setStatus('info', 'No results found. Try a different title.');
+      return;
+    }
+    results.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'sub-result-item';
+      const srcBadge = item.source === 'subdl' ? 'SubDL' : 'OpenSubs';
+      div.innerHTML = `
+        <div class="sri-name">${escHtml(item.name)}</div>
+        <div class="sri-meta">
+          <span class="sri-badge">${srcBadge}</span>
+          ${item.downloads ? `<span>${item.downloads.toLocaleString()} downloads</span>` : ''}
+          ${item.rating ? `<span>★ ${item.rating}</span>` : ''}
+        </div>`;
+      div.addEventListener('click', () => downloadAndLoad(item, div));
+      subResults.appendChild(div);
+    });
+  }
+
+  async function downloadAndLoad(item, rowEl) {
+    /* Show loading state on the row */
+    const original = rowEl.innerHTML;
+    rowEl.innerHTML = `<div class="sri-loading">Downloading subtitle…</div>`;
+    rowEl.style.pointerEvents = 'none';
+
+    try {
+      const result = await SubSearch.download(item);
+
+      if (result.type === 'zip') {
+        throw new Error('ZIP download not supported in browser. Try another subtitle.');
+      }
+
+      const n = Subs.loadText(result.text, result.type);
+      subPanel.classList.add('hidden');
+      enableSubs();
+      window.App?.updateSubBadge(item.name, n);
+
+    } catch(err) {
+      rowEl.innerHTML = original;
+      rowEl.style.pointerEvents = '';
+      setStatus('error', 'Download failed: ' + (err.message || err));
+    }
+  }
+
+  function setStatus(type, msg) {
+    if (type === 'hidden') {
+      subSearchStatus.classList.add('hidden');
+      return;
+    }
+    subSearchStatus.className = 'sub-search-status ' + type;
+    subSearchStatus.textContent = msg || '';
+    subSearchStatus.classList.remove('hidden');
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ══════════════════════════════════════════
+     PUBLIC API
+  ══════════════════════════════════════════ */
   return { init, load, stop, enableSubs };
 
 })();
