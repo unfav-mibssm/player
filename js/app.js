@@ -2,14 +2,13 @@
 
 /* ════════════════════════════════════════════
    APP.JS — Orchestrator
-   Manages: home ↔ player navigation,
-   URL input, subtitle file loading,
-   error display, browser back button
+   Home ↔ Player navigation, URL input,
+   subtitle file from home screen,
+   browser back button, error display
    ════════════════════════════════════════════ */
 
 const App = (() => {
 
-  /* ── DOM ── */
   const homeScreen   = document.getElementById('home-screen');
   const playerScreen = document.getElementById('player-screen');
   const urlInput     = document.getElementById('url-input');
@@ -22,25 +21,28 @@ const App = (() => {
   const homeError    = document.getElementById('home-error');
   const homeErrTxt   = document.getElementById('home-error-text');
 
-  /* ── State ── */
-  let _playerActive = false;
-  let _errTimer     = null;
+  let _active   = false;
+  let _errTimer = null;
 
-  /* ════ INIT ════ */
+  /* ══ INIT ══ */
   function init() {
     Player.init();
-    window.App = { showHome };
 
-    // Restore last URL
+    /* Expose to player module */
+    window.App = { showHome, updateSubBadge };
+
+    /* Restore last URL */
     const last = U.LS.get('mb_last_url');
-    if (last) { urlInput.value = last; urlClear.classList.add('show'); }
+    if (last) {
+      urlInput.value = last;
+      urlClear.classList.add('show');
+    }
 
-    bindHome();
-    bindBrowserBack();
+    bindEvents();
   }
 
-  /* ════ HOME BINDINGS ════ */
-  function bindHome() {
+  /* ══ EVENTS ══ */
+  function bindEvents() {
     playBtn.addEventListener('click', handlePlay);
 
     urlInput.addEventListener('keydown', (e) => {
@@ -52,7 +54,7 @@ const App = (() => {
       hideErr();
     });
 
-    // Auto-play on paste if URL looks valid
+    /* Auto-play on paste */
     urlInput.addEventListener('paste', () => {
       setTimeout(() => {
         const v = urlInput.value.trim();
@@ -69,56 +71,52 @@ const App = (() => {
     });
 
     subFileInput.addEventListener('change', handleSubFile);
-    subRemove.addEventListener('click', removeSub);
+    subRemove.addEventListener('click',    removeSub);
+
+    /* Browser back button */
+    window.addEventListener('popstate', () => {
+      if (_active) {
+        Player.stop();
+        showHome();
+      }
+    });
   }
 
-  /* ════ PLAY ════ */
+  /* ══ PLAY ══ */
   function handlePlay() {
     const url = urlInput.value.trim();
-
     if (!url) {
       showErr('Please paste a video URL first.');
       urlInput.focus();
       return;
     }
-
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       showErr('URL must start with http:// or https://');
       return;
     }
-
     hideErr();
     U.LS.set('mb_last_url', url);
-
-    showPlayer();
+    _active = true;
+    homeScreen.classList.add('hidden');
+    playerScreen.classList.remove('hidden');
+    window.scrollTo(0, 0);
     Player.load(url);
-
-    // If subtitle already loaded, auto-enable
     if (Subs.isLoaded()) Player.enableSubs();
-
-    // Push history so browser back works
     history.pushState({ player: true }, '', '#playing');
   }
 
-  /* ════ SUBTITLE FILE ════ */
+  /* ══ SUB FILE FROM HOME SCREEN ══ */
   async function handleSubFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const n = await Subs.loadFile(file);
-      subBadgeTxt.textContent = `${file.name} · ${n} cues`;
-      subBadge.classList.remove('hidden');
+      updateSubBadge(file.name, n);
       hideErr();
-
-      // If player is active, enable immediately
-      if (_playerActive) Player.enableSubs();
-
     } catch(err) {
       showErr(String(err));
     }
-
-    subFileInput.value = ''; // reset so same file can reload
+    subFileInput.value = '';
   }
 
   function removeSub() {
@@ -127,36 +125,24 @@ const App = (() => {
     subBadgeTxt.textContent = '';
   }
 
-  /* ════ SCREEN TRANSITIONS ════ */
-  function showPlayer() {
-    _playerActive = true;
-    homeScreen.classList.add('hidden');
-    playerScreen.classList.remove('hidden');
-    window.scrollTo(0, 0);
+  /* ══ SUB BADGE (called from player too) ══ */
+  function updateSubBadge(name, count) {
+    const display = name.length > 35 ? name.substring(0, 35) + '…' : name;
+    subBadgeTxt.textContent = `${display} · ${count} cues`;
+    subBadge.classList.remove('hidden');
   }
 
+  /* ══ SHOW HOME ══ */
   function showHome() {
-    _playerActive = false;
+    _active = false;
     playerScreen.classList.add('hidden');
     homeScreen.classList.remove('hidden');
-
-    // Fix: pop history state if we pushed one
     if (location.hash === '#playing') {
       history.replaceState(null, '', location.pathname);
     }
   }
 
-  /* ════ BROWSER BACK ════ */
-  function bindBrowserBack() {
-    window.addEventListener('popstate', (e) => {
-      if (_playerActive) {
-        Player.stop();
-        showHome();
-      }
-    });
-  }
-
-  /* ════ ERROR ════ */
+  /* ══ ERRORS ══ */
   function showErr(msg) {
     homeErrTxt.textContent = msg;
     homeError.classList.remove('hidden');
@@ -169,8 +155,7 @@ const App = (() => {
     clearTimeout(_errTimer);
   }
 
-  return { init, showHome };
+  return { init, showHome, updateSubBadge };
 })();
 
-/* ── Bootstrap ── */
 document.addEventListener('DOMContentLoaded', App.init);
