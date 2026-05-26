@@ -43,7 +43,7 @@
             </button>
             <label class="btn-sub" title="Upload .srt or .vtt subtitle file">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg>
-              Add .srt file
+              Subtitles
               <input id="sub-file-input" type="file" accept=".srt,.vtt" hidden />
             </label>
           </div>
@@ -227,6 +227,31 @@
         <button id="pe-back" class="pe-back">Go Back</button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ═══ HEVC WARNING POPUP ═══ -->
+  <div id="hevc-popup" class="hevc-popup-overlay hidden">
+    <div class="hevc-popup">
+      <div class="hevc-popup-top">
+        <!-- VLC orange cone logo SVG -->
+        <svg class="hevc-vlc-logo" xmlns="http://www.w3.org/2000/svg" aria-label="VLC" role="img" viewBox="0 0 512 512"><rect width="512" height="512" rx="15%" fill="#ffffff00"></rect><g fill="#f7901e"><path d="M437 400l-36-94c-3-10-13-16-23-16H134c-10 0-20 6-23 16l-36 94c-2 3-2 7-2 11 0 16 13 29 29 29h308a29 29 0 0 0 27-40z"></path><path d="M299 109l-15-51c-3-11-13-18-24-18h-8c-11 0-21 7-24 18l-15 51a307 307 0 0 0 86 0zM256 183c-24 0-46-2-64-6l-19 65c20 8 49 13 83 13s63-5 83-13l-20-65c-17 4-39 6-63 6z"></path></g><g fill="#f2f2f2"><path d="M319 177l-20-68a307 307 0 0 1-86 0l-21 68c18 4 40 6 64 6s46-2 63-6z"></path><path d="M173 242l-18 62c19 14 55 23 101 23s82-9 101-23l-18-62c-20 8-49 13-83 13s-63-5-83-13z"></path></g></svg>
+        <div class="hevc-popup-badge">HEVC · x265 · 10bit</div>
+      </div>
+
+      <h2 class="hevc-popup-title">May not play in browser</h2>
+      <p class="hevc-popup-desc">This file uses a codec (HEVC/x265/10bit) that most Android browsers cannot decode. You'll likely see a black screen with audio only.</p>
+      <p class="hevc-popup-desc2">For best experience, open it in <strong>VLC Media Player</strong> — it supports all formats for free.</p>
+
+      <div class="hevc-popup-actions">
+        <a id="hevc-vlc-btn" href="#" class="hevc-btn-vlc">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="24" height="24"><rect width="512" height="512" rx="15%" fill="#ffffff00"></rect><g fill="#f7901e"><path d="M437 400l-36-94c-3-10-13-16-23-16H134c-10 0-20 6-23 16l-36 94c-2 3-2 7-2 11 0 16 13 29 29 29h308a29 29 0 0 0 27-40z"></path><path d="M299 109l-15-51c-3-11-13-18-24-18h-8c-11 0-21 7-24 18l-15 51a307 307 0 0 0 86 0zM256 183c-24 0-46-2-64-6l-19 65c20 8 49 13 83 13s63-5 83-13l-20-65c-17 4-39 6-63 6z"></path></g><g fill="#f2f2f2"><path d="M319 177l-20-68a307 307 0 0 1-86 0l-21 68c18 4 40 6 64 6s46-2 63-6z"></path><path d="M173 242l-18 62c19 14 55 23 101 23s82-9 101-23l-18-62c-20 8-49 13-83 13s-63-5-83-13z"></path></g></svg>
+          Open in VLC
+        </a>
+        <button id="hevc-try-btn" class="hevc-btn-try">Try in Browser Anyway</button>
+      </div>
+
+      <button id="hevc-close" class="hevc-popup-close">✕</button>
     </div>
   </div>
 
