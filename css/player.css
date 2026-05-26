@@ -591,3 +591,164 @@
 @media (orientation: portrait) {
   #vid { width: 100%; height: auto; max-height: 100%; }
 }
+
+/* ══ HEVC WARNING POPUP ══ */
+.hevc-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 env(safe-area-inset-bottom, 0px);
+  animation: overlay-in 0.2s ease;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.hevc-popup {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: #0f1219;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-bottom: none;
+  border-radius: 24px 24px 0 0;
+  padding: 28px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  animation: sheet-up 0.3s cubic-bezier(0.34,1.2,0.64,1);
+  box-shadow: 0 -20px 60px rgba(0,0,0,0.6);
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.hevc-popup-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.hevc-vlc-logo {
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 4px 16px rgba(255,136,0,0.4));
+}
+
+.hevc-popup-badge {
+  padding: 4px 12px;
+  background: rgba(255,136,0,0.12);
+  border: 1px solid rgba(255,136,0,0.3);
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ff8800;
+  text-transform: uppercase;
+}
+
+.hevc-popup-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #e4e6f0;
+  letter-spacing: -0.01em;
+  margin-top: 2px;
+}
+
+.hevc-popup-desc {
+  font-size: 14px;
+  color: rgba(228,230,240,0.55);
+  line-height: 1.6;
+  max-width: 340px;
+}
+
+.hevc-popup-desc2 {
+  font-size: 13px;
+  color: rgba(228,230,240,0.4);
+  line-height: 1.6;
+  max-width: 320px;
+}
+
+.hevc-popup-desc2 strong {
+  color: rgba(228,230,240,0.7);
+  font-weight: 600;
+}
+
+.hevc-popup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.hevc-btn-vlc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 15px 20px;
+  background: linear-gradient(135deg, #ff8800 0%, #cc5500 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 14px;
+  text-decoration: none;
+  box-shadow: 0 4px 24px rgba(255,136,0,0.35);
+  transition: transform 0.12s, box-shadow 0.12s;
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.hevc-btn-vlc:hover  { transform: translateY(-1px); box-shadow: 0 6px 32px rgba(255,136,0,0.5); }
+.hevc-btn-vlc:active { transform: scale(0.97); }
+
+.hevc-btn-try {
+  width: 100%;
+  padding: 13px 20px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  color: rgba(228,230,240,0.6);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
+  transition: background 0.15s, color 0.15s;
+}
+.hevc-btn-try:hover  { background: rgba(255,255,255,0.1); color: #e4e6f0; }
+.hevc-btn-try:active { transform: scale(0.98); }
+
+.hevc-popup-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.07);
+  color: rgba(228,230,240,0.5);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.hevc-popup-close:hover { background: rgba(255,255,255,0.12); color: #e4e6f0; }
+
+/* Disable scroll behind popup */
+body.hevc-popup-open { overflow: hidden; }
